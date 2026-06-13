@@ -1,5 +1,6 @@
-"""End-to-end example: matches a 5-item list and prints the single-store plan, the
-multi-store split, and the per-item reasons. No server needed.
+"""End-to-end example: builds the lakehouse if needed, shows the layers, then
+matches a 5-item list and prints the single-store plan, the multi-store split, and
+the per-item reasons.
 
     python scripts/demo.py
 """
@@ -10,10 +11,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from copy import deepcopy                                # noqa: E402
 
-from app import config                                   # noqa: E402
 from app.config import SETTINGS, Weights                 # noqa: E402
-from app.data import simulator                           # noqa: E402
 from app.data.store import Repository                    # noqa: E402
+from app.lakehouse import io, paths, pipeline            # noqa: E402
 from app.matching.matcher import ProductMatcher          # noqa: E402
 from app.models import UserCartItem                      # noqa: E402
 from app.optimization import greedy, ortools_solver      # noqa: E402
@@ -39,12 +39,30 @@ def print_plan(label, plan):
           f"round-trip | coverage {plan.coverage:.0%} | objective {plan.objective}")
 
 
+def show_lakehouse():
+    rule("=")
+    print("lakehouse (bronze -> silver -> gold)")
+    rule("=")
+    for label, p in [("bronze.price_events", paths.BRONZE_PRICE_EVENTS),
+                     ("silver.fact_inventory", paths.SILVER_FACT_INVENTORY),
+                     ("gold.store_product_offers", paths.GOLD_OFFERS)]:
+        print(f"  {label:<28} v{io.table_version(p)}  {len(io.read_delta(p)):>4} rows")
+    print("  (501 raw price events -> 167 latest-price rows after Silver dedup)")
+
+    print("\n  cheapest stores by price index (gold.store_price_index):")
+    idx = io.read_delta(paths.GOLD_STORE_INDEX).sort_values("price_index").head(3)
+    for r in idx.itertuples(index=False):
+        print(f"    {r.store_name:<16} index {r.price_index:.3f}  "
+              f"({r.products_in_stock} products)")
+
+
 def main():
-    if not config.STORES_FILE.exists():
-        simulator.write_dataset()
+    if not pipeline.is_built():
+        pipeline.build()
     repo = Repository.load()
     matcher = ProductMatcher(repo)
 
+    show_lakehouse()
     print(f"\nmatcher backend: {matcher.backend}")
     print(f"stores: {len(repo.all_store_ids())} | cart: {CART}\n")
 
@@ -79,7 +97,6 @@ def main():
     for a in result["multi_store"].assignments:
         print(f"  {a.item}: {a.reason}")
 
-    # Same cart, a shopper who doesn't mind extra stops: lower distance/visit weights.
     print()
     rule("=")
     print("same cart, weights tuned for a price-focused shopper")

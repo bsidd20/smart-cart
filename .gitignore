@@ -2,6 +2,6 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-# Generated synthetic dataset (reproducible via scripts/generate_data.py).
-data/*.json
+# Lakehouse data, rebuilt with scripts/build_lakehouse.py
+/data/
 .DS_Store

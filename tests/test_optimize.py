@@ -1,25 +1,38 @@
-"""Tests for matching, the optimizer, and the API. Run with `pytest`."""
+"""Tests for the lakehouse, matching, the optimizer, and the API. Run with `pytest`."""
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import config                                  # noqa: E402
-from app.config import SETTINGS                          # noqa: E402
-from app.data import simulator                           # noqa: E402
-from app.data.store import Repository                    # noqa: E402
-from app.matching.matcher import ProductMatcher          # noqa: E402
-from app.models import UserCartItem                      # noqa: E402
-from app.optimization import greedy                      # noqa: E402
+from app.config import SETTINGS                            # noqa: E402
+from app.data.store import Repository                      # noqa: E402
+from app.lakehouse import io, paths, pipeline              # noqa: E402
+from app.matching.matcher import ProductMatcher            # noqa: E402
+from app.models import UserCartItem                        # noqa: E402
+from app.optimization import greedy                        # noqa: E402
 
 CART = ["chicken breast", "rice", "eggs", "milk", "spinach"]
 
 
 def _setup():
-    if not config.STORES_FILE.exists():
-        simulator.write_dataset()
+    if not pipeline.is_built():
+        pipeline.build()
     repo = Repository.load()
     return repo, ProductMatcher(repo)
+
+
+def test_lakehouse_dedupes_and_builds_gold():
+    pipeline.build()
+    # Silver collapses the re-ingested duplicate rows back to one per key.
+    raw_stores = len(io.read_delta(paths.BRONZE_STORES))
+    dim_stores = len(io.read_delta(paths.SILVER_DIM_STORE))
+    assert dim_stores < raw_stores
+    # fact_inventory keeps the latest event per (store, product), far fewer than raw.
+    assert len(io.read_delta(paths.SILVER_FACT_INVENTORY)) < len(io.read_delta(paths.BRONZE_PRICE_EVENTS))
+    # price events were ingested over multiple days, so the table has versions.
+    assert io.table_version(paths.BRONZE_PRICE_EVENTS) >= 1
+    # gold serving table is populated.
+    assert len(io.read_delta(paths.GOLD_OFFERS)) > 0
 
 
 def test_matching_picks_canonical_products():
@@ -55,9 +68,11 @@ def test_api_endpoints():
         o = client.post("/optimize-cart", json={"items": CART}).json()
         assert o["single_store"]["coverage"] == 1.0
         assert o["recommended"] in ("single_store", "multi_store")
+        assert len(client.get("/price-stats").json()) > 0
 
 
 if __name__ == "__main__":
+    test_lakehouse_dedupes_and_builds_gold()
     test_matching_picks_canonical_products()
     test_optimizer_full_coverage_and_soundness()
     test_api_endpoints()
