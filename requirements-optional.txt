@@ -1,0 +1,4 @@
+# Optional: exact ILP solver, real embeddings, test runner.
+ortools>=9.8
+sentence-transformers>=2.5
+pytest>=8.0
