@@ -6,10 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
-STORES_FILE = DATA_DIR / "stores.json"
-PRODUCTS_FILE = DATA_DIR / "products.json"
-INVENTORY_FILE = DATA_DIR / "inventory.json"
+DATA_DIR = PROJECT_ROOT / "data"   # lakehouse root (data/lake/{bronze,silver,gold})
 
 # Centre of the synthetic map; stores are scattered around it. A real deployment
 # would take the user's location from the request instead.

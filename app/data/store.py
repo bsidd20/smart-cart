@@ -1,17 +1,17 @@
-"""Repository over the local JSON files.
+"""Repository over the Gold serving table.
 
-Loads stores/products/inventory, joins inventory to products so each store exposes
-a list of in-stock candidates, and computes store distance from the user. Keeping
-this behind one class means swapping JSON for a database later only touches here.
+Reads gold.store_product_offers (one row per store/product with price + product
+metadata) and exposes stores, in-stock candidates per store, and distances. The
+matcher and optimizer only see this interface, not the lakehouse underneath.
 """
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import dataclass
 
-from app import config
-from app.models import InventoryItem, Product, Store
+from app.config import SETTINGS
+from app.lakehouse import io, paths
+from app.models import Product, Store
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -35,33 +35,31 @@ class Repository:
     def __init__(self):
         self._stores: dict[str, Store] = {}
         self._products: dict[str, Product] = {}
-        self._candidates: dict[str, list[Candidate]] = {}   # store_id -> in-stock items
+        self._candidates: dict[str, list[Candidate]] = {}
 
     @classmethod
     def load(cls) -> "Repository":
         repo = cls()
-        stores = json.loads(config.STORES_FILE.read_text())
-        products = json.loads(config.PRODUCTS_FILE.read_text())
-        inventory = json.loads(config.INVENTORY_FILE.read_text())
-
-        repo._stores = {s["store_id"]: Store(**s) for s in stores}
-        repo._products = {p["product_id"]: Product(**p) for p in products}
-
-        for inv in inventory:
-            item = InventoryItem(**inv)
-            if not item.in_stock:
-                continue
-            product = repo._products.get(item.product_id)
-            if product is None:
-                continue
-            repo._candidates.setdefault(item.store_id, []).append(
-                Candidate(product=product, price=item.price, in_stock=item.in_stock)
-            )
+        offers = io.read_delta(paths.GOLD_OFFERS)
+        for row in offers.itertuples(index=False):
+            if row.store_id not in repo._stores:
+                repo._stores[row.store_id] = Store(
+                    store_id=row.store_id, name=row.store_name, chain=row.chain,
+                    lat=float(row.lat), lon=float(row.lon))
+            if row.product_id not in repo._products:
+                terms = [t for t in str(row.search_terms).split("|") if t]
+                repo._products[row.product_id] = Product(
+                    product_id=row.product_id, name=row.product_name,
+                    category=row.category, unit=row.unit, search_terms=terms)
+            if bool(row.in_stock):
+                repo._candidates.setdefault(row.store_id, []).append(
+                    Candidate(product=repo._products[row.product_id],
+                              price=float(row.price), in_stock=True))
         return repo
 
     def stores(self, user_lat: float | None = None, user_lon: float | None = None) -> list[Store]:
-        ulat = user_lat if user_lat is not None else config.SETTINGS.user_lat
-        ulon = user_lon if user_lon is not None else config.SETTINGS.user_lon
+        ulat = user_lat if user_lat is not None else SETTINGS.user_lat
+        ulon = user_lon if user_lon is not None else SETTINGS.user_lon
         out = []
         for s in self._stores.values():
             s = s.model_copy()

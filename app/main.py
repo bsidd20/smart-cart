@@ -14,10 +14,9 @@ from copy import deepcopy
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from app import config
 from app.config import SETTINGS
-from app.data import simulator
 from app.data.store import Repository
+from app.lakehouse import io, paths, pipeline
 from app.matching.matcher import ProductMatcher
 from app.models import OptimizationResult, Store, UserCartItem
 from app.optimization import greedy, ortools_solver
@@ -27,8 +26,8 @@ STATE: dict = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not config.STORES_FILE.exists():
-        simulator.write_dataset()          # generate data on first run
+    if not pipeline.is_built():
+        pipeline.build()                   # build the lakehouse on first run
     repo = Repository.load()
     STATE["repo"] = repo
     STATE["matcher"] = ProductMatcher(repo)
@@ -61,6 +60,18 @@ class OptimizeResponse(BaseModel):
 @app.get("/stores", response_model=list[Store])
 def get_stores(user_lat: float | None = None, user_lon: float | None = None):
     return STATE["repo"].stores(user_lat, user_lon)
+
+
+@app.get("/price-stats")
+def price_stats():
+    """Per-product price stats across stores (gold.product_price_stats)."""
+    return io.read_delta(paths.GOLD_PRICE_STATS).to_dict(orient="records")
+
+
+@app.get("/store-index")
+def store_index():
+    """Per-store price index, cheapest first (gold.store_price_index)."""
+    return io.read_delta(paths.GOLD_STORE_INDEX).to_dict(orient="records")
 
 
 @app.post("/match-items")
