@@ -1,17 +1,18 @@
-"""Generates a synthetic store catalog.
+"""Generates raw source data for the lakehouse.
 
-Real grocery prices aren't freely available, so we build our own: a fixed product
-list (with synonyms and some near-duplicates the matcher has to tell apart) and a
-set of stores whose chains have different price profiles and coverage. Output is
-seeded, so the catalog is identical on every run. To use real data, replace this
-module with a scraper or feed; nothing else changes.
+Produces three feeds, deliberately a bit messy so the Silver layer has real work:
+  - stores: a store directory (with a few re-ingested duplicate rows)
+  - products: a supplier catalog (duplicates + stray whitespace)
+  - price_events: timestamped price observations over several days, many per
+    (store, product) pair, so Silver has to pick the latest
+
+Seeded, so the data is identical every run. Replace this module with a scraper or a
+real feed to use live data; the rest of the pipeline doesn't change.
 """
 from __future__ import annotations
 
-import json
 import random
 
-from app import config
 from app.config import DEFAULT_USER_LAT, DEFAULT_USER_LON
 
 # (name, category, base price, unit, [synonyms])
@@ -50,101 +51,82 @@ PRODUCT_UNIVERSE: list[tuple[str, str, float, str, list[str]]] = [
     ("White Sugar 1kg", "baking", 1.20, "kg", ["sugar", "white sugar"]),
 ]
 
-# Each chain has a base price multiplier, an in-stock probability, a default
-# coverage, and per-category overrides for price and coverage. The specialization
-# (a cheap butcher, an organic market) is what creates the price/coverage tradeoffs
-# the optimizer has to weigh.
 CHAINS: list[dict] = [
-    {   # generalist: carries almost everything at a middling price
-        "name": "ValueMart", "base_mult": 0.95, "stock_p": 0.95,
-        "default_coverage": 0.90, "cat_mult": {}, "cat_coverage": {},
-    },
-    {   # cheap pantry/dairy, pricier and patchier on fresh
-        "name": "MegaSaver", "base_mult": 0.92, "stock_p": 0.94,
-        "default_coverage": 0.88,
-        "cat_mult": {"grains": 0.78, "baking": 0.78, "beverages": 0.80,
-                     "breakfast": 0.80, "condiments": 0.82, "frozen": 0.82,
-                     "dairy": 0.95, "meat": 1.12, "produce": 1.10},
-        "cat_coverage": {"meat": 0.5, "produce": 0.5},
-    },
-    {   # premium full-range
-        "name": "FreshFields", "base_mult": 1.16, "stock_p": 0.98,
-        "default_coverage": 0.97, "cat_mult": {"produce": 0.98}, "cat_coverage": {},
-    },
-    {   # organic: cheapest produce and plant dairy, weak on pantry
-        "name": "GreenBasket", "base_mult": 1.10, "stock_p": 0.95,
-        "default_coverage": 0.35,
-        "cat_mult": {"produce": 0.72, "dairy": 0.90, "dairy-alt": 0.85},
-        "cat_coverage": {"produce": 0.95, "dairy": 0.90, "dairy-alt": 0.90},
-    },
-    {   # butcher: cheapest meat, little else
-        "name": "ButcherBlock", "base_mult": 1.00, "stock_p": 0.97,
-        "default_coverage": 0.08,
-        "cat_mult": {"meat": 0.72}, "cat_coverage": {"meat": 0.97},
-    },
-    {   # convenience: dear and limited
-        "name": "QuickStop", "base_mult": 1.30, "stock_p": 0.90,
-        "default_coverage": 0.55, "cat_mult": {}, "cat_coverage": {},
-    },
+    {"name": "ValueMart", "base_mult": 0.95, "stock_p": 0.95,
+     "default_coverage": 0.90, "cat_mult": {}, "cat_coverage": {}},
+    {"name": "MegaSaver", "base_mult": 0.92, "stock_p": 0.94, "default_coverage": 0.88,
+     "cat_mult": {"grains": 0.78, "baking": 0.78, "beverages": 0.80, "breakfast": 0.80,
+                  "condiments": 0.82, "frozen": 0.82, "dairy": 0.95, "meat": 1.12, "produce": 1.10},
+     "cat_coverage": {"meat": 0.5, "produce": 0.5}},
+    {"name": "FreshFields", "base_mult": 1.16, "stock_p": 0.98, "default_coverage": 0.97,
+     "cat_mult": {"produce": 0.98}, "cat_coverage": {}},
+    {"name": "GreenBasket", "base_mult": 1.10, "stock_p": 0.95, "default_coverage": 0.35,
+     "cat_mult": {"produce": 0.72, "dairy": 0.90, "dairy-alt": 0.85},
+     "cat_coverage": {"produce": 0.95, "dairy": 0.90, "dairy-alt": 0.90}},
+    {"name": "ButcherBlock", "base_mult": 1.00, "stock_p": 0.97, "default_coverage": 0.08,
+     "cat_mult": {"meat": 0.72}, "cat_coverage": {"meat": 0.97}},
+    {"name": "QuickStop", "base_mult": 1.30, "stock_p": 0.90, "default_coverage": 0.55,
+     "cat_mult": {}, "cat_coverage": {}},
 ]
 
 
-def _scatter(rng: random.Random, lat: float, lon: float, radius_deg: float):
+def _scatter(rng, lat, lon, radius_deg):
     return (lat + rng.uniform(-radius_deg, radius_deg),
             lon + rng.uniform(-radius_deg, radius_deg))
 
 
-def generate(seed: int = 42, n_stores: int = 7) -> dict:
+def generate_raw(seed: int = 42, n_stores: int = 8, n_days: int = 3) -> dict:
     rng = random.Random(seed)
+    base_ts = "2024-01-01T06:00:00"
 
-    products = [
-        {"product_id": f"p{idx:03d}", "name": name, "category": cat,
-         "brand": None, "unit": unit, "search_terms": terms}
-        for idx, (name, cat, _base, unit, terms) in enumerate(PRODUCT_UNIVERSE)
-    ]
-    base_price = {f"p{idx:03d}": base
-                  for idx, (_n, _c, base, _u, _t) in enumerate(PRODUCT_UNIVERSE)}
-    product_cat = {f"p{idx:03d}": cat
-                   for idx, (_n, cat, _b, _u, _t) in enumerate(PRODUCT_UNIVERSE)}
+    # --- product feed (with a couple of re-ingested duplicates) ---
+    products = []
+    for idx, (name, cat, _b, unit, terms) in enumerate(PRODUCT_UNIVERSE):
+        products.append({
+            "product_id": f"p{idx:03d}", "raw_name": name, "category": cat,
+            "unit": unit, "search_terms": "|".join(terms),
+            "ingested_at": base_ts, "source": "supplier_feed",
+        })
+    base_price = {f"p{idx:03d}": b for idx, (_n, _c, b, _u, _t) in enumerate(PRODUCT_UNIVERSE)}
+    product_cat = {f"p{idx:03d}": c for idx, (_n, c, _b, _u, _t) in enumerate(PRODUCT_UNIVERSE)}
+    # re-ingest two products later, one with stray whitespace -> Silver must dedupe/clean
+    products.append({**products[3], "raw_name": "  Whole Milk 1L ",
+                     "ingested_at": "2024-01-02T06:00:00"})
+    products.append({**products[0], "ingested_at": "2024-01-02T06:00:00"})
 
-    stores, inventory = [], []
+    # --- store feed (with a couple of duplicate rows) ---
+    stores, carries = [], {}
     for s in range(n_stores):
         chain = CHAINS[s % len(CHAINS)]
-        # ~2.5 km radius so multi-store trips stay plausible
         lat, lon = _scatter(rng, DEFAULT_USER_LAT, DEFAULT_USER_LON, 0.022)
-        store_id = f"s{s:02d}"
-        stores.append({
-            "store_id": store_id,
-            "name": f"{chain['name']} #{s+1}",
-            "chain": chain["name"],
-            "lat": round(lat, 6), "lon": round(lon, 6),
-        })
-        for prod in products:
-            cat = product_cat[prod["product_id"]]
-            coverage = chain["cat_coverage"].get(cat, chain["default_coverage"])
-            if rng.random() > coverage:
-                continue  # store doesn't carry this product
-            cat_mult = chain["cat_mult"].get(cat, 1.0)
-            noise = rng.uniform(0.95, 1.06)
-            price = base_price[prod["product_id"]] * chain["base_mult"] * cat_mult * noise
-            inventory.append({
-                "store_id": store_id,
-                "product_id": prod["product_id"],
-                "price": round(price, 2),
-                "in_stock": rng.random() < chain["stock_p"],
+        sid = f"s{s:02d}"
+        stores.append({"store_id": sid, "name": f"{chain['name']} #{s+1}",
+                       "chain": chain["name"], "lat": round(lat, 6), "lon": round(lon, 6),
+                       "ingested_at": base_ts, "source": "store_feed"})
+        # decide which products this store carries (fixed across days)
+        for pid in base_price:
+            cat = product_cat[pid]
+            cov = chain["cat_coverage"].get(cat, chain["default_coverage"])
+            if rng.random() <= cov:
+                carries[(sid, pid)] = chain
+    stores.append({**stores[0], "ingested_at": "2024-01-02T06:00:00"})  # duplicate re-ingest
+
+    # --- price events: one per (store, product, day), with daily drift ---
+    events = []
+    eid = 0
+    for d in range(n_days):
+        observed = f"2024-01-{d+1:02d}T08:00:00"
+        for (sid, pid), chain in carries.items():
+            cat = product_cat[pid]
+            store_noise = rng.uniform(0.95, 1.06)
+            day_drift = rng.uniform(0.97, 1.03)
+            price = base_price[pid] * chain["base_mult"] * chain["cat_mult"].get(cat, 1.0)
+            price = round(price * store_noise * day_drift, 2)
+            events.append({
+                "event_id": f"e{eid:06d}", "store_id": sid, "product_id": pid,
+                "price": price, "in_stock": rng.random() < chain["stock_p"],
+                "observed_at": observed, "source": "price_scrape",
             })
-    return {"stores": stores, "products": products, "inventory": inventory}
+            eid += 1
 
-
-def write_dataset(seed: int = 42, n_stores: int = 7) -> None:
-    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
-    data = generate(seed=seed, n_stores=n_stores)
-    config.STORES_FILE.write_text(json.dumps(data["stores"], indent=2))
-    config.PRODUCTS_FILE.write_text(json.dumps(data["products"], indent=2))
-    config.INVENTORY_FILE.write_text(json.dumps(data["inventory"], indent=2))
-    print(f"Wrote {len(data['stores'])} stores, {len(data['products'])} products, "
-          f"{len(data['inventory'])} inventory rows to {config.DATA_DIR}")
-
-
-if __name__ == "__main__":
-    write_dataset()
+    return {"stores": stores, "products": products, "price_events": events}
