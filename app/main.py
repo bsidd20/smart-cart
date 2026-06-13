@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 
 from app.config import SETTINGS
 from app.data.store import Repository
-from app.lakehouse import io, paths, pipeline
+from app.ingestion import io, paths
+from app.ingestion.orchestration import pipeline
 from app.matching.matcher import ProductMatcher
 from app.models import OptimizationResult, Store, UserCartItem
 from app.optimization import greedy, ortools_solver
@@ -27,7 +28,7 @@ STATE: dict = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not pipeline.is_built():
-        pipeline.build()                   # build the lakehouse on first run
+        pipeline.run_fixture()             # offline build from the real-data sample
     repo = Repository.load()
     STATE["repo"] = repo
     STATE["matcher"] = ProductMatcher(repo)
@@ -64,14 +65,30 @@ def get_stores(user_lat: float | None = None, user_lon: float | None = None):
 
 @app.get("/price-stats")
 def price_stats():
-    """Per-product price stats across stores (gold.product_price_stats)."""
-    return io.read_delta(paths.GOLD_PRICE_STATS).to_dict(orient="records")
+    """Per-category price stats (gold.category_price_stats)."""
+    return io.read_delta(paths.GOLD_CATEGORY_PRICE_STATS).to_dict(orient="records")
 
 
-@app.get("/store-index")
-def store_index():
-    """Per-store price index, cheapest first (gold.store_price_index)."""
-    return io.read_delta(paths.GOLD_STORE_INDEX).to_dict(orient="records")
+@app.get("/cheapest")
+def cheapest():
+    """Cheapest store per product (gold.cheapest_products)."""
+    return io.read_delta(paths.GOLD_CHEAPEST_PRODUCTS).to_dict(orient="records")
+
+
+@app.get("/ingestion/runs")
+def ingestion_runs():
+    """Ingestion run history (meta.ingestion_runs)."""
+    if not paths.exists(paths.META_RUNS):
+        return []
+    return io.read_delta(paths.META_RUNS).to_dict(orient="records")
+
+
+@app.get("/ingestion/quality")
+def ingestion_quality():
+    """Latest data quality check results (quality.quality_results)."""
+    if not paths.exists(paths.QUALITY_RESULTS):
+        return []
+    return io.read_delta(paths.QUALITY_RESULTS).to_dict(orient="records")
 
 
 @app.post("/match-items")

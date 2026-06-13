@@ -10,7 +10,7 @@ import math
 from dataclasses import dataclass
 
 from app.config import SETTINGS
-from app.lakehouse import io, paths
+from app.ingestion import io, paths
 from app.models import Product, Store
 
 EARTH_RADIUS_KM = 6371.0
