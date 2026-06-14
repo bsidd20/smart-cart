@@ -7,6 +7,7 @@
 Transform = silver products -> model store/price layer -> silver store/inventory
 -> gold -> quality checks -> metrics. Bronze is append-only; Silver MERGEs.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,8 +18,8 @@ from app.ingestion import paths
 from app.ingestion.bronze import products as bronze_products
 from app.ingestion.bronze import stores as bronze_stores
 from app.ingestion.gold import build as gold
-from app.ingestion.metadata import metrics, runs
-from app.ingestion.quality import checks
+from app.ingestion.metadata import metrics, runs, schema
+from app.ingestion.quality import checks, quarantine
 from app.ingestion.silver import inventory as silver_inv
 from app.ingestion.silver import products as silver_products
 from app.ingestion.silver import stores as silver_stores
@@ -33,6 +34,12 @@ def _ingest(records: list[dict], mode: str) -> dict:
     t0 = time.time()
     n = bronze_products.land(records, run)
     rejected = sum(1 for r in records if not r.get("barcode") or not r.get("product_name"))
+    if records:  # detect/log source schema drift before declaring the run done
+        schema.log_drift(
+            run["run_id"],
+            "openfoodfacts",
+            schema.detect_drift("openfoodfacts", set(records[0].keys())),
+        )
     runs.finish_run(run, rows_ingested=n, rows_rejected=rejected, duration_s=time.time() - t0)
 
     watermarks: dict[str, int] = {}
@@ -56,6 +63,7 @@ def ingest_fixture() -> dict:
 
 
 def transform(run_id: str, seed: int = 42) -> None:
+    quarantine.quarantine_bad_products(run_id)  # route malformed records aside
     silver_products.build()
     bronze_stores.model(seed=seed)
     silver_stores.build()

@@ -3,6 +3,7 @@
 Layers: bronze (raw), silver (clean), gold (serving), plus meta (run tracking,
 watermarks, metrics) and quality (check results).
 """
+
 from app.config import DATA_DIR
 
 LAKE = DATA_DIR / "lake"
@@ -33,9 +34,11 @@ GOLD_PRODUCT_SEARCH_INDEX = GOLD / "product_search_index"
 META_RUNS = META / "ingestion_runs"
 META_WATERMARKS = META / "watermarks"
 META_METRICS = META / "ingestion_metrics"
+META_SCHEMA_DRIFT = META / "schema_drift"
 
 # quality
 QUALITY_RESULTS = QUALITY / "quality_results"
+QUALITY_QUARANTINE = QUALITY / "quarantine"
 
 
 def exists(table_path) -> bool:
