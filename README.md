@@ -5,15 +5,16 @@ Turn a grocery list into a shopping plan. Given items like
 single store to buy everything, the cheapest practical multi-store split, and a short
 reason for each item.
 
-It's built on a real ingestion pipeline: product data is pulled from
-[Open Food Facts](https://world.openfoodfacts.org) into Bronze Delta tables, cleaned
-and deduplicated into Silver, and rolled up into Gold serving tables. The matcher and
-optimizer serve off Gold. Everything runs locally and free, using real Delta Lake
-tables (via `delta-rs`), DuckDB for SQL, and FastAPI for the API.
+The centerpiece is a data platform; the optimizer is one consumer of it. Product data
+is pulled from [Open Food Facts](https://world.openfoodfacts.org) into Bronze Delta
+tables, transformed by **dbt** (staging -> intermediate -> marts) with tests and
+lineage, validated, and served as Gold marts. It runs locally and free using real
+Delta Lake (via `delta-rs`), DuckDB, and dbt, and is designed to lift onto AWS
+(Terraform) with Airflow orchestration and GitHub Actions CI.
 
 Open Food Facts has product data but no prices, so the store/price layer is modeled on
-top of the real product master behind a single swappable module. See
-[docs/INGESTION.md](docs/INGESTION.md) for the full data design.
+top of the real product master behind a single swappable module. Full design:
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/INGESTION.md](docs/INGESTION.md).
 
 ## Setup
 
@@ -59,6 +60,26 @@ Tests: `pytest`
 - **Quality + observability**: every run records check results, row counts, and data
   freshness to dedicated tables, exposed at `/ingestion/quality` and `/ingestion/runs`.
 
+## Data platform
+
+- **dbt** (`transform/`) is the transform layer: sources over the Bronze Delta tables,
+  `staging` -> `intermediate` -> `marts`, with data tests and generated lineage. Run it
+  in a Python 3.13 env:
+  ```bash
+  python3.13 -m venv .venv-dbt && source .venv-dbt/bin/activate && pip install -r requirements-dbt.txt
+  export SMARTCART_LAKE=$(pwd)/data/lake SMARTCART_MARTS=$(pwd)/data/lake/marts
+  cd transform && dbt build --profiles-dir .   # builds marts + runs tests
+  dbt docs generate --profiles-dir . && dbt docs serve --profiles-dir .   # lineage
+  ```
+- **Orchestration** (`orchestration/airflow/`): a daily DAG with retries/backoff,
+  backfills (`catchup`), failure alerts, and quality gates.
+- **Schema evolution**: source drift is detected per run (`app/ingestion/metadata/schema.py`)
+  - new columns are allowed, removals are flagged.
+- **Quarantine**: malformed records are routed to a quarantine table, not dropped.
+- **Cloud / IaC** (`infra/`): Terraform for an S3 lakehouse with dev/stage/prod isolation.
+- **CI** (`.github/workflows/ci.yml`): ruff lint + format, pytest, and a full dbt
+  build+test on every push.
+
 ## Endpoints
 
 - `GET /stores` - stores near the user with distances
@@ -95,13 +116,15 @@ OR-Tools is installed.
 ```
 app/
   main.py            FastAPI app
-  models.py          data models
-  config.py          paths, location, weights
   ingestion/         sources, bronze, silver, gold, metadata, quality, orchestration
   data/              repository (reads Gold)
   matching/          fuzzy, semantic, orchestrator
   optimization/      ranking, greedy, ortools
+transform/           dbt project (staging -> intermediate -> marts, tests, lineage)
+orchestration/airflow/  production DAG (retries, backfills, alerts, quality gates)
+infra/               Terraform: S3 lakehouse, dev/stage/prod
+.github/workflows/   CI: lint, tests, dbt build+test
 scripts/             ingest.py, demo.py
-tests/               tests + real-data fixture
-docs/                INGESTION.md
+tests/               app + platform tests, real-data fixture
+docs/                ARCHITECTURE.md, INGESTION.md
 ```

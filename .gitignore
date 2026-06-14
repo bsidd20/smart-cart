@@ -1,7 +1,18 @@
 .venv/
+.venv-dbt/
 __pycache__/
 *.pyc
 .pytest_cache/
-# Lakehouse data, rebuilt with scripts/build_lakehouse.py
+.ruff_cache/
+# Lakehouse data, rebuilt with scripts/ingest.py
 /data/
+# dbt build artifacts
+transform/target/
+transform/dbt_packages/
+transform/logs/
+*.duckdb
+# Terraform state
+infra/**/.terraform/
+*.tfstate
+*.tfstate.*
 .DS_Store
