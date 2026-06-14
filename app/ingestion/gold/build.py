@@ -37,7 +37,7 @@ def build() -> None:
         store=paths.SILVER_DIM_STORE,
         product=paths.SILVER_DIM_PRODUCT,
     )
-    io.write_delta(offers, paths.GOLD_OFFERS)
+    io.write_delta(offers, paths.GOLD_OFFERS, partition_by=["category"])
 
     stats = io.sql(
         """

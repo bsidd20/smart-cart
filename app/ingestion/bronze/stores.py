@@ -126,6 +126,7 @@ def model(
                     "price": round(price, 2),
                     "in_stock": rng.random() < chain["stock_p"],
                     "observed_at": observed,
+                    "event_date": observed[:10],  # partition key (time-series)
                     "source_system": "modeled_pricing",
                 }
             )
@@ -137,4 +138,5 @@ def model(
             pd.DataFrame(batch),
             paths.BRONZE_RAW_PRICE_EVENTS,
             mode="overwrite" if i == 0 else "append",
+            partition_by=["event_date"],
         )

@@ -118,5 +118,5 @@ def build() -> tuple[int, int]:
             "last_modified_t",
         ]
     ]
-    io.upsert_delta(out, paths.SILVER_DIM_PRODUCT, key="barcode")
+    io.upsert_delta(out, paths.SILVER_DIM_PRODUCT, key="barcode", partition_by=["category"])
     return len(out), rejected

@@ -19,5 +19,6 @@ def land(records: list[dict], run: dict) -> int:
     df["ingested_at"] = run["started_at"]
     df["source_system"] = run["source"]
     df["schema_version"] = run.get("schema_version", "off_v2")
-    io.write_delta(df, paths.BRONZE_RAW_PRODUCTS, mode="append")
+    # partition by category so per-category reads prune to one directory
+    io.write_delta(df, paths.BRONZE_RAW_PRODUCTS, mode="append", partition_by=["taxonomy_key"])
     return len(df)
