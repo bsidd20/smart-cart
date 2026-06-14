@@ -1,0 +1,2 @@
+# Kafka client for the producer/consumer (pure Python, runs anywhere).
+kafka-python-ng>=2.2

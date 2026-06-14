@@ -17,6 +17,7 @@ QUALITY = LAKE / "quality"
 BRONZE_RAW_PRODUCTS = BRONZE / "raw_products"
 BRONZE_RAW_STORES = BRONZE / "raw_stores"
 BRONZE_RAW_PRICE_EVENTS = BRONZE / "raw_price_events"
+BRONZE_STREAM_EVENTS = BRONZE / "stream_price_events"  # written by the Kafka consumer
 
 # silver: clean, typed, deduplicated
 SILVER_DIM_PRODUCT = SILVER / "dim_product"
