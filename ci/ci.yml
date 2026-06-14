@@ -17,13 +17,17 @@ jobs:
       - name: Install app dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt ruff pytest
+          pip install -r requirements.txt -r requirements-streaming.txt ruff pytest
       - name: Lint (ruff)
         run: |
-          ruff check app scripts tests
-          ruff format --check app scripts tests
+          ruff check app scripts tests streaming spark
+          ruff format --check app scripts tests streaming spark
       - name: Unit + integration tests
-        run: pytest -q
+        run: pytest -q              # includes streaming logic tests (no broker needed)
+      - name: Spark jobs compile (no JVM needed)
+        run: python -m py_compile spark/stream_bronze.py spark/batch_silver.py
+      - name: Scale simulation smoke (200k rows)
+        run: python scripts/scale_simulation.py 200000 10 8
 
   dbt-build-and-test:
     runs-on: ubuntu-latest

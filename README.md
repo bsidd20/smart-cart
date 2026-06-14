@@ -80,6 +80,15 @@ Tests: `pytest`
   partition pruning; `scripts/benchmark.py` shows pruning (~91% files skipped) and
   small-file compaction / Z-order with before/after numbers. See
   [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+- **Streaming** (`streaming/`, `spark/`): Kafka price-event stream -> Spark Structured
+  Streaming -> Bronze Delta, with a dead-letter queue, offset tracking, event schema
+  versioning, watermarks/late handling, and replay. Kafka runs via `docker compose up`;
+  the producer/consumer logic is unit-tested without a broker. See
+  [docs/STREAMING.md](docs/STREAMING.md).
+- **Scale**: `scripts/scale_simulation.py` builds millions of rows and benchmarks
+  partition pruning + compaction at a size where it matters (2M rows: one-day query
+  3.6x faster, compaction 1200->30 files). PySpark + Delta jobs in `spark/` are the
+  distributed path. See [docs/SCALE.md](docs/SCALE.md).
 - **Cloud / IaC** (`infra/`): Terraform for an S3 lakehouse with dev/stage/prod isolation.
 - **CI** (`.github/workflows/ci.yml`): ruff lint + format, pytest, and a full dbt
   build+test on every push.
@@ -125,10 +134,12 @@ app/
   matching/          fuzzy, semantic, orchestrator
   optimization/      ranking, greedy, ortools
 transform/           dbt project (staging -> intermediate -> marts, tests, lineage)
-orchestration/airflow/  production DAG (retries, backfills, alerts, quality gates)
+streaming/           Kafka producer/consumer, DLQ, replay, schema versioning
+spark/               PySpark + Delta: Structured Streaming + batch jobs
+orchestration/airflow/  production DAG (retries, backfills, alerts, optimize, quality gates)
 infra/               Terraform: S3 lakehouse, dev/stage/prod
-.github/workflows/   CI: lint, tests, dbt build+test
-scripts/             ingest.py, demo.py, benchmark.py
-tests/               app + platform tests, real-data fixture
-docs/                ARCHITECTURE.md, INGESTION.md, PERFORMANCE.md
+docker-compose.yml   Kafka (KRaft) + UI + Spark streaming profile
+scripts/             ingest.py, demo.py, benchmark.py, scale_simulation.py
+tests/               app + platform + streaming tests, real-data fixture
+docs/                ARCHITECTURE, INGESTION, PERFORMANCE, STREAMING, SCALE
 ```
