@@ -76,6 +76,10 @@ Tests: `pytest`
 - **Schema evolution**: source drift is detected per run (`app/ingestion/metadata/schema.py`)
   - new columns are allowed, removals are flagged.
 - **Quarantine**: malformed records are routed to a quarantine table, not dropped.
+- **Partitioning + performance**: Delta tables are partitioned by category/date for
+  partition pruning; `scripts/benchmark.py` shows pruning (~91% files skipped) and
+  small-file compaction / Z-order with before/after numbers. See
+  [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 - **Cloud / IaC** (`infra/`): Terraform for an S3 lakehouse with dev/stage/prod isolation.
 - **CI** (`.github/workflows/ci.yml`): ruff lint + format, pytest, and a full dbt
   build+test on every push.
@@ -124,7 +128,7 @@ transform/           dbt project (staging -> intermediate -> marts, tests, linea
 orchestration/airflow/  production DAG (retries, backfills, alerts, quality gates)
 infra/               Terraform: S3 lakehouse, dev/stage/prod
 .github/workflows/   CI: lint, tests, dbt build+test
-scripts/             ingest.py, demo.py
+scripts/             ingest.py, demo.py, benchmark.py
 tests/               app + platform tests, real-data fixture
-docs/                ARCHITECTURE.md, INGESTION.md
+docs/                ARCHITECTURE.md, INGESTION.md, PERFORMANCE.md
 ```
