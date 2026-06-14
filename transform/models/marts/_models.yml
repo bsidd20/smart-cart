@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: product_catalog
+    description: Clean product master for search, browse, and enrichment joins.
+    columns:
+      - name: product_id
+        description: GTIN/UPC.
+        tests: [unique, not_null]
+
+  - name: store_product_offers
+    description: Denormalized store x product x price; the table the application serves from.
+    columns:
+      - name: price
+        tests: [positive]
+      - name: product_id
+        description: References the product catalog.
+        tests:
+          - relationships:
+              to: ref('product_catalog')
+              field: product_id
+
+  - name: category_price_stats
+    description: Per-category price spread and cheapest store.
+    columns:
+      - name: category
+        tests: [unique, not_null]
+
+  - name: cheapest_products
+    description: Cheapest store per product.
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+
+  - name: product_search_index
+    description: Per-product search terms and availability for matching/typeahead.
+    columns:
+      - name: product_id
+        tests: [unique, not_null]

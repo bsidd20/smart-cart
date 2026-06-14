@@ -1,0 +1,21 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: >
+      Raw, append-only landing tables produced by the Python ingestion layer and
+      stored as Delta. dbt reads them in place via DuckDB's delta_scan; nothing is
+      cleaned in Bronze.
+    tables:
+      - name: raw_products
+        description: Raw Open Food Facts product records, one row per API record per run.
+        meta:
+          external_location: "delta_scan('{{ env_var('SMARTCART_LAKE') }}/bronze/raw_products')"
+      - name: raw_stores
+        description: Modeled store directory (the synthetic pricing layer's stores).
+        meta:
+          external_location: "delta_scan('{{ env_var('SMARTCART_LAKE') }}/bronze/raw_stores')"
+      - name: raw_price_events
+        description: Modeled timestamped price observations per store and product.
+        meta:
+          external_location: "delta_scan('{{ env_var('SMARTCART_LAKE') }}/bronze/raw_price_events')"

@@ -1,0 +1,20 @@
+smartcart:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('SMARTCART_DUCKDB', '/tmp/smartcart_dev.duckdb') }}"
+      extensions:
+        - delta
+      external_root: "{{ env_var('SMARTCART_MARTS', 'target/marts') }}"
+      threads: 4
+    # stage/prod would point at S3 (s3://.../lake) with the same models; see
+    # docs/ARCHITECTURE.md and infra/ for the cloud target.
+    prod:
+      type: duckdb
+      path: "{{ env_var('SMARTCART_DUCKDB', '/tmp/smartcart_prod.duckdb') }}"
+      extensions:
+        - delta
+        - httpfs
+      external_root: "{{ env_var('SMARTCART_MARTS', 's3://smartcart-prod/marts') }}"
+      threads: 8

@@ -1,0 +1,23 @@
+name: 'smartcart'
+version: '1.0.0'
+config-version: 2
+profile: 'smartcart'
+
+model-paths: ['models']
+seed-paths: ['seeds']
+macro-paths: ['macros']
+test-paths: ['tests']
+target-path: 'target'
+clean-targets: ['target', 'dbt_packages']
+
+# staging/intermediate are views over the Bronze Delta tables (no copies);
+# marts materialize to parquet so the application can read them.
+models:
+  smartcart:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: external
+      +format: parquet

@@ -1,0 +1,2 @@
+# dbt runs in its own environment (Python 3.13). See transform/ and docs/ARCHITECTURE.md.
+dbt-duckdb>=1.9

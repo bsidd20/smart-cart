@@ -1,0 +1,13 @@
+taxonomy_key,product_group,term,base_price
+milk,dairy,milk,1.20
+eggs,dairy,eggs,3.00
+chicken breast,meat,chicken breast,7.50
+rice,grains,rice,3.20
+spinach,produce,spinach,2.20
+yogurt,dairy,yogurt,2.80
+cheese,dairy,cheese,3.40
+bread,bakery,bread,1.90
+pasta,grains,pasta,1.30
+cereal,breakfast,cereal,3.60
+coffee,beverages,coffee,5.40
+orange juice,beverages,orange juice,2.40

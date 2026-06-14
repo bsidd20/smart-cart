@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: int_products_deduped
+    description: One row per product (latest by last_modified_t), malformed rows dropped, taxonomy-mapped, with modeled base price and search terms.
+    columns:
+      - name: barcode
+        description: GTIN/UPC; the product business key.
+        tests: [unique, not_null, valid_gtin]
+      - name: category
+        description: Our grocery taxonomy category.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['milk','eggs','chicken breast','rice','spinach','yogurt','cheese','bread','pasta','cereal','coffee','orange juice']
+      - name: base_price
+        description: Modeled base price (no free price source exists).
+        tests: [positive]
+
+  - name: int_stores
+    description: One row per store (latest ingested), valid coordinates only.
+    columns:
+      - name: store_id
+        tests: [unique, not_null]
+
+  - name: int_inventory_current
+    description: Latest price per (store, product) from the price event stream.
+    columns:
+      - name: price
+        tests: [positive]
