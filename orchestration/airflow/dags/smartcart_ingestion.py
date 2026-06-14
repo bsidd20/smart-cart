@@ -90,4 +90,9 @@ with DAG(
         python_callable=_check_freshness,
     )
 
-    ingest >> transform_dbt >> quality_report >> freshness_check
+    optimize_tables = BashOperator(
+        task_id="optimize_tables",  # compact small files + Z-order after the load
+        bash_command=f"cd {REPO} && .venv/bin/python -m app.ingestion.maintenance",
+    )
+
+    ingest >> transform_dbt >> optimize_tables >> quality_report >> freshness_check
