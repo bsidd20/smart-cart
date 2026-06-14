@@ -1,0 +1,5 @@
+# Spark runs in the container (see docker-compose.yml / spark/README.md), which pulls
+# delta-spark and the Kafka connector via --packages. These pins are for reference and
+# for running the jobs against a local Spark install if you have a JVM.
+pyspark>=3.5,<3.6
+delta-spark>=3.2
