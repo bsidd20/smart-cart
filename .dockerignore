@@ -1,0 +1,14 @@
+.venv
+.venv-dbt
+data
+.git
+.github
+**/__pycache__
+*.pyc
+transform/target
+transform/dbt_packages
+.pytest_cache
+.ruff_cache
+*.duckdb
+infra
+docs

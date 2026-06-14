@@ -82,8 +82,9 @@ Tests: `pytest`
   [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 - **Streaming** (`streaming/`, `spark/`): Kafka price-event stream -> Spark Structured
   Streaming -> Bronze Delta, with a dead-letter queue, offset tracking, event schema
-  versioning, watermarks/late handling, and replay. Kafka runs via `docker compose up`;
-  the producer/consumer logic is unit-tested without a broker. See
+  versioning, watermarks/late handling, and replay. The whole stack (Kafka, producer,
+  consumer, Spark) runs with **`docker compose up --build`** - host needs only Docker;
+  the producer/consumer logic is also unit-tested without a broker. See
   [docs/STREAMING.md](docs/STREAMING.md).
 - **Scale**: `scripts/scale_simulation.py` builds millions of rows and benchmarks
   partition pruning + compaction at a size where it matters (2M rows: one-day query
@@ -138,7 +139,8 @@ streaming/           Kafka producer/consumer, DLQ, replay, schema versioning
 spark/               PySpark + Delta: Structured Streaming + batch jobs
 orchestration/airflow/  production DAG (retries, backfills, alerts, optimize, quality gates)
 infra/               Terraform: S3 lakehouse, dev/stage/prod
-docker-compose.yml   Kafka (KRaft) + UI + Spark streaming profile
+Dockerfile           app image for the containerized producer/consumer
+docker-compose.yml   one-command stack: Kafka (KRaft) + UI + producer + consumer + Spark
 scripts/             ingest.py, demo.py, benchmark.py, scale_simulation.py
 tests/               app + platform + streaming tests, real-data fixture
 docs/                ARCHITECTURE, INGESTION, PERFORMANCE, STREAMING, SCALE

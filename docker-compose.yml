@@ -1,9 +1,11 @@
-# Local streaming infrastructure.
-#   docker compose up -d                 # Kafka + UI
-#   docker compose --profile spark up     # also start the Spark Structured Streaming job
+# One-command streaming stack. Host only needs Docker.
 #
-# Kafka runs in KRaft mode (no ZooKeeper). Host clients connect on localhost:9092;
-# containers use kafka:9094.
+#   docker compose up --build              # Kafka + UI + topic-init + producer + Python consumer
+#   docker compose --profile spark up --build   # also run the Spark Structured Streaming consumer
+#
+# Bronze output is written to ./data on the host. Kafka UI: http://localhost:8080
+# Kafka runs in KRaft mode (no ZooKeeper); host clients use localhost:9092, containers
+# use kafka:9094.
 services:
   kafka:
     image: bitnami/kafka:3.7
@@ -24,7 +26,7 @@ services:
       test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 15
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -33,14 +35,55 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9094
+      DYNAMIC_CONFIG_ENABLED: "true"
     depends_on:
       kafka:
         condition: service_healthy
 
-  # Spark Structured Streaming: Kafka -> Bronze Delta. Started only with the profile.
+  # Create topics with explicit partition counts, then exit.
+  topic-init:
+    image: bitnami/kafka:3.7
+    restart: "no"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        kafka-topics.sh --bootstrap-server kafka:9094 --create --if-not-exists \
+          --topic price-events --partitions 6 --replication-factor 1
+        kafka-topics.sh --bootstrap-server kafka:9094 --create --if-not-exists \
+          --topic price-events.dlq --partitions 3 --replication-factor 1
+        echo "topics ready"
+
+  # Python consumer (default engine): price-events -> Bronze Delta, bad records -> DLQ.
+  consumer:
+    build: .
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9094
+    volumes:
+      - ./data:/app/data
+    command: ["python", "-m", "streaming.run_consumer"]
+
+  # One-shot producer that feeds a batch of events (valid v1/v2, some bad -> DLQ).
+  producer:
+    build: .
+    restart: "no"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9094
+    command: ["python", "-m", "streaming.produce_demo", "2000"]
+
+  # Spark Structured Streaming consumer (production engine). Opt-in via the profile.
   spark-stream:
     image: bitnami/spark:3.5
     profiles: ["spark"]
+    user: root
     depends_on:
       kafka:
         condition: service_healthy

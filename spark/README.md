@@ -6,14 +6,13 @@ these run in the Spark container (no local Java required).
 ## Structured Streaming (Kafka -> Bronze Delta)
 
 ```bash
-docker compose up -d                  # Kafka
-docker compose --profile spark up      # Spark Structured Streaming job (stream_bronze.py)
-python -m streaming.produce_demo 5000   # feed events from the host
+docker compose --profile spark up --build   # Kafka + producer + Spark streaming job
 ```
 
-`stream_bronze.py` reads `price-events`, parses + watermarks, and upserts into Bronze
-Delta with an idempotent MERGE inside `foreachBatch`. Offsets and state are
-checkpointed, so a restart resumes exactly-once.
+That single command starts Kafka, the producer (feeds events), and the Spark
+Structured Streaming job. `stream_bronze.py` reads `price-events`, parses + watermarks,
+and upserts into Bronze Delta with an idempotent MERGE inside `foreachBatch`. Offsets
+and state are checkpointed, so a restart resumes exactly-once.
 
 ## Batch transform (Bronze -> Silver)
 

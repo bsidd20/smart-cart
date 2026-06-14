@@ -62,13 +62,26 @@ MERGE on `event_id`.
 - **Bronze stays append/MERGE, not the source of truth for analytics**: Silver/Gold
   still own current state, so streaming and batch converge on the same marts.
 
-## Run it locally
+## Run it locally (one command, only Docker required)
+
+```bash
+docker compose up --build
+```
+
+That starts Kafka + UI (http://localhost:8080), creates the topics, runs the producer
+(feeds 2000 events including v1, invalid, and malformed), and runs the Python consumer,
+which writes valid events to Bronze Delta (`data/lake/bronze/stream_price_events`) and
+routes bad records to the DLQ. Everything runs in containers; nothing is installed on
+the host except Docker.
+
+```bash
+docker compose --profile spark up --build    # use the Spark Structured Streaming engine
+```
+
+To run the Python clients directly instead of in containers:
 
 ```bash
 pip install -r requirements-streaming.txt
-docker compose up -d                       # Kafka + UI (localhost:8080)
-python -m streaming.produce_demo 5000       # publish events (incl. v1, bad, late)
-python -m streaming.run_consumer 5          # pure-Python consumer -> Bronze + DLQ
-# or the Spark path:
-docker compose --profile spark up           # Spark Structured Streaming -> Bronze
+python -m streaming.produce_demo 2000
+python -m streaming.run_consumer
 ```
