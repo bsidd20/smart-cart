@@ -4,6 +4,7 @@ Lexical similarity: fast and deterministic, good for typos/plurals/word order, b
 blind to true synonyms (it doesn't know aubergine == eggplant). The semantic matcher
 covers that case.
 """
+
 from __future__ import annotations
 
 from rapidfuzz import fuzz

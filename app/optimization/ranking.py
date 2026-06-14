@@ -13,6 +13,7 @@ Weights live in config.py. coverage is kept large so items are never dropped to 
 a little; raising distance/store_visit pushes toward one store, lowering them lets
 plans fan out to cheaper stores.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,18 +30,21 @@ class Line:
     score: float
 
 
-def objective(lines: list[Line], num_missing: int,
-              oneway_km_by_store: dict[str, float], w: Weights) -> dict:
+def objective(
+    lines: list[Line], num_missing: int, oneway_km_by_store: dict[str, float], w: Weights
+) -> dict:
     basket_price = sum(l.qty * l.unit_price for l in lines)
     sub_gap = sum(1.0 - l.score for l in lines)
     stores_used = sorted({l.store_id for l in lines})
     total_km = sum(2.0 * oneway_km_by_store[s] for s in stores_used)  # out and back
 
-    total = (w.price_weight * basket_price
-             + w.distance_weight * total_km
-             + w.substitution_penalty * sub_gap
-             + w.store_visit_penalty * len(stores_used)
-             + w.coverage_penalty * num_missing)
+    total = (
+        w.price_weight * basket_price
+        + w.distance_weight * total_km
+        + w.substitution_penalty * sub_gap
+        + w.store_visit_penalty * len(stores_used)
+        + w.coverage_penalty * num_missing
+    )
 
     return {
         "objective": round(total, 3),

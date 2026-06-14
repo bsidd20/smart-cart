@@ -3,18 +3,19 @@
 Uses the committed real-data fixture so tests run offline and deterministically.
 Run with `pytest`.
 """
+
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.config import SETTINGS                            # noqa: E402
-from app.data.store import Repository                      # noqa: E402
-from app.ingestion import io, paths                        # noqa: E402
-from app.ingestion.orchestration import pipeline           # noqa: E402
-from app.matching.matcher import ProductMatcher            # noqa: E402
-from app.models import UserCartItem                        # noqa: E402
-from app.optimization import greedy                        # noqa: E402
+from app.config import SETTINGS  # noqa: E402
+from app.data.store import Repository  # noqa: E402
+from app.ingestion import io, paths  # noqa: E402
+from app.ingestion.orchestration import pipeline  # noqa: E402
+from app.matching.matcher import ProductMatcher  # noqa: E402
+from app.models import UserCartItem  # noqa: E402
+from app.optimization import greedy  # noqa: E402
 
 CART = ["chicken breast", "rice", "eggs", "milk", "spinach"]
 
@@ -22,7 +23,9 @@ CART = ["chicken breast", "rice", "eggs", "milk", "spinach"]
 def test_pipeline_builds_and_quality_holds():
     pipeline.run_fixture()
     # Silver drops malformed rows, so it has fewer products than raw Bronze.
-    assert len(io.read_delta(paths.SILVER_DIM_PRODUCT)) < len(io.read_delta(paths.BRONZE_RAW_PRODUCTS))
+    assert len(io.read_delta(paths.SILVER_DIM_PRODUCT)) < len(
+        io.read_delta(paths.BRONZE_RAW_PRODUCTS)
+    )
     assert len(io.read_delta(paths.GOLD_OFFERS)) > 0
     # every hard (error-severity) quality check passes; malformed records are caught.
     q = io.read_delta(paths.QUALITY_RESULTS)
@@ -37,8 +40,10 @@ def test_matching_real_products():
     # "milk" must resolve to a dairy milk product, never almond/oat/soy milk
     avail = [m for m in matcher.match_across_stores("milk").values() if m.available]
     assert avail
-    assert all("almond" not in m.product_name.lower() and "oat" not in m.product_name.lower()
-               for m in avail)
+    assert all(
+        "almond" not in m.product_name.lower() and "oat" not in m.product_name.lower()
+        for m in avail
+    )
 
 
 def test_optimizer_coverage_and_soundness():
@@ -56,7 +61,9 @@ def test_optimizer_coverage_and_soundness():
 
 def test_api_endpoints():
     from fastapi.testclient import TestClient
+
     from app.main import app
+
     with TestClient(app) as client:
         assert len(client.get("/stores").json()) == 8
         m = client.post("/match-items", json={"items": ["milk", "spinach"]}).json()

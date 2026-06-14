@@ -1,4 +1,5 @@
 """Silver store dimension: dedupe by store_id, trim, validate coordinates."""
+
 from __future__ import annotations
 
 from app.ingestion import io, paths

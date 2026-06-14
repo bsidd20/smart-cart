@@ -4,6 +4,7 @@ Reads gold.store_product_offers (one row per store/product with price + product
 metadata) and exposes stores, in-stock candidates per store, and distances. The
 matcher and optimizer only see this interface, not the lakehouse underneath.
 """
+
 from __future__ import annotations
 
 import math
@@ -44,17 +45,29 @@ class Repository:
         for row in offers.itertuples(index=False):
             if row.store_id not in repo._stores:
                 repo._stores[row.store_id] = Store(
-                    store_id=row.store_id, name=row.store_name, chain=row.chain,
-                    lat=float(row.lat), lon=float(row.lon))
+                    store_id=row.store_id,
+                    name=row.store_name,
+                    chain=row.chain,
+                    lat=float(row.lat),
+                    lon=float(row.lon),
+                )
             if row.product_id not in repo._products:
                 terms = [t for t in str(row.search_terms).split("|") if t]
                 repo._products[row.product_id] = Product(
-                    product_id=row.product_id, name=row.product_name,
-                    category=row.category, unit=row.unit, search_terms=terms)
+                    product_id=row.product_id,
+                    name=row.product_name,
+                    category=row.category,
+                    unit=row.unit,
+                    search_terms=terms,
+                )
             if bool(row.in_stock):
                 repo._candidates.setdefault(row.store_id, []).append(
-                    Candidate(product=repo._products[row.product_id],
-                              price=float(row.price), in_stock=True))
+                    Candidate(
+                        product=repo._products[row.product_id],
+                        price=float(row.price),
+                        in_stock=True,
+                    )
+                )
         return repo
 
     def stores(self, user_lat: float | None = None, user_lon: float | None = None) -> list[Store]:

@@ -1,12 +1,13 @@
 """App configuration: paths, default location, matching thresholds, and the
 weights used by the optimization objective."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_ROOT / "data"   # lakehouse root (data/lake/{bronze,silver,gold})
+DATA_DIR = PROJECT_ROOT / "data"  # lakehouse root (data/lake/{bronze,silver,gold})
 
 # Centre of the synthetic map; stores are scattered around it. A real deployment
 # would take the user's location from the request instead.
@@ -33,9 +34,9 @@ class Weights:
     # + coverage * num_missing_items
     price_weight: float = 1.0
     distance_weight: float = 0.40
-    substitution_penalty: float = 6.0   # weak substitutes must be much cheaper to win
-    store_visit_penalty: float = 2.50   # fixed cost per extra store
-    coverage_penalty: float = 25.0      # large, so items are never dropped to save a little
+    substitution_penalty: float = 6.0  # weak substitutes must be much cheaper to win
+    store_visit_penalty: float = 2.50  # fixed cost per extra store
+    coverage_penalty: float = 25.0  # large, so items are never dropped to save a little
 
 
 @dataclass

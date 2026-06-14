@@ -1,11 +1,12 @@
 """Gold serving + analytics tables built from Silver.
 
-  product_catalog       - clean product master (search, browse, enrichment joins)
-  store_product_offers  - denormalized store x product x price; what the app serves
-  category_price_stats  - per-category price spread (merchandising / price checks)
-  cheapest_products     - cheapest store per product (deals, price comparison)
-  product_search_index  - per-product search terms + availability (typeahead/matching)
+product_catalog       - clean product master (search, browse, enrichment joins)
+store_product_offers  - denormalized store x product x price; what the app serves
+category_price_stats  - per-category price spread (merchandising / price checks)
+cheapest_products     - cheapest store per product (deals, price comparison)
+product_search_index  - per-product search terms + availability (typeahead/matching)
 """
+
 from __future__ import annotations
 
 from app.ingestion import io, paths

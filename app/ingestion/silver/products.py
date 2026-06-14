@@ -5,28 +5,32 @@ malformed rows, normalize units, map to our category taxonomy, assign a modeled
 base price, and build search terms. The result is MERGEd into the dimension so
 re-runs upsert changed products (incremental + late-arriving handling).
 """
+
 from __future__ import annotations
 
 import re
-
-import pandas as pd
 
 from app.ingestion import io, paths
 from app.ingestion.category_map import TAXONOMY
 
 _UNIT_TO_CANON = {  # -> (canonical_unit, factor)
-    "kg": ("g", 1000.0), "g": ("g", 1.0), "mg": ("g", 0.001),
-    "l": ("ml", 1000.0), "ml": ("ml", 1.0), "cl": ("ml", 10.0),
-    "oz": ("g", 28.3495), "lb": ("g", 453.592),
-    "fl oz": ("ml", 29.5735), "floz": ("ml", 29.5735),
+    "kg": ("g", 1000.0),
+    "g": ("g", 1.0),
+    "mg": ("g", 0.001),
+    "l": ("ml", 1000.0),
+    "ml": ("ml", 1.0),
+    "cl": ("ml", 10.0),
+    "oz": ("g", 28.3495),
+    "lb": ("g", 453.592),
+    "fl oz": ("ml", 29.5735),
+    "floz": ("ml", 29.5735),
 }
 
 
 def _parse_quantity(q) -> tuple[float | None, str | None]:
     if not isinstance(q, str):
         return None, None
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(fl\s*oz|floz|kg|mg|cl|ml|oz|lb|g|l)\b",
-                  q.lower())
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(fl\s*oz|floz|kg|mg|cl|ml|oz|lb|g|l)\b", q.lower())
     if not m:
         return None, None
     value, unit = float(m.group(1)), m.group(2).replace(" ", "")
@@ -37,7 +41,7 @@ def _parse_quantity(q) -> tuple[float | None, str | None]:
 def _base_price(barcode: str, taxonomy_key: str) -> float:
     base = TAXONOMY[taxonomy_key]["base_price"]
     digits = re.sub(r"\D", "", barcode)[-4:] or "0"
-    factor = 0.85 + (int(digits) % 31) / 100.0   # deterministic 0.85..1.15
+    factor = 0.85 + (int(digits) % 31) / 100.0  # deterministic 0.85..1.15
     return round(base * factor, 2)
 
 
@@ -54,7 +58,8 @@ def _search_terms(name: str, brand, taxonomy_key: str) -> str:
     seen, out = set(), []
     for t in ordered:
         if t not in seen:
-            seen.add(t); out.append(t)
+            seen.add(t)
+            out.append(t)
     return "|".join(out[:10])
 
 
@@ -90,13 +95,28 @@ def build() -> tuple[int, int]:
     qty = clean["quantity"].map(_parse_quantity)
     clean["size_value"] = [v for v, _ in qty]
     clean["size_unit"] = [u for _, u in qty]
-    clean["base_price"] = [_base_price(b, k)
-                           for b, k in zip(clean["barcode"], clean["taxonomy_key"])]
-    clean["search_terms"] = [_search_terms(n, br, k) for n, br, k
-                             in zip(clean["product_name"], clean["brands"], clean["taxonomy_key"])]
+    clean["base_price"] = [
+        _base_price(b, k) for b, k in zip(clean["barcode"], clean["taxonomy_key"])
+    ]
+    clean["search_terms"] = [
+        _search_terms(n, br, k)
+        for n, br, k in zip(clean["product_name"], clean["brands"], clean["taxonomy_key"])
+    ]
 
-    out = clean[["barcode", "product_name", "brands", "category", "product_group",
-                 "size_value", "size_unit", "base_price", "search_terms",
-                 "categories_tags", "last_modified_t"]]
+    out = clean[
+        [
+            "barcode",
+            "product_name",
+            "brands",
+            "category",
+            "product_group",
+            "size_value",
+            "size_unit",
+            "base_price",
+            "search_terms",
+            "categories_tags",
+            "last_modified_t",
+        ]
+    ]
     io.upsert_delta(out, paths.SILVER_DIM_PRODUCT, key="barcode")
     return len(out), rejected

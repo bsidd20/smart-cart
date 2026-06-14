@@ -3,6 +3,7 @@
 We add ingestion metadata (run id, timestamp, source system, schema version) but
 do not clean or dedupe here. Bronze is the replay log; Silver derives current state.
 """
+
 from __future__ import annotations
 
 import pandas as pd

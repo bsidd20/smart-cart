@@ -9,6 +9,7 @@ Produces three feeds, deliberately a bit messy so the Silver layer has real work
 Seeded, so the data is identical every run. Replace this module with a scraper or a
 real feed to use live data; the rest of the pipeline doesn't change.
 """
+
 from __future__ import annotations
 
 import random
@@ -18,10 +19,22 @@ from app.config import DEFAULT_USER_LAT, DEFAULT_USER_LON
 # (name, category, base price, unit, [synonyms])
 PRODUCT_UNIVERSE: list[tuple[str, str, float, str, list[str]]] = [
     ("Chicken Breast Fillets", "meat", 7.50, "kg", ["chicken breast", "chicken fillet", "chicken"]),
-    ("White Basmati Rice 1kg", "grains", 3.20, "kg", ["rice", "white rice", "basmati rice", "basmati"]),
+    (
+        "White Basmati Rice 1kg",
+        "grains",
+        3.20,
+        "kg",
+        ["rice", "white rice", "basmati rice", "basmati"],
+    ),
     ("Large Eggs (dozen)", "dairy", 3.00, "dozen", ["eggs", "egg", "large eggs", "dozen eggs"]),
     ("Whole Milk 1L", "dairy", 1.20, "L", ["milk", "whole milk", "dairy milk", "full fat milk"]),
-    ("Baby Spinach 200g", "produce", 2.20, "pack", ["spinach", "baby spinach", "fresh spinach", "leaf spinach"]),
+    (
+        "Baby Spinach 200g",
+        "produce",
+        2.20,
+        "pack",
+        ["spinach", "baby spinach", "fresh spinach", "leaf spinach"],
+    ),
     # near-duplicates the matcher should NOT pick for the queries above
     ("Chicken Thighs", "meat", 5.50, "kg", ["chicken thighs", "chicken thigh"]),
     ("Brown Rice 1kg", "grains", 3.80, "kg", ["brown rice", "wholegrain rice"]),
@@ -52,27 +65,69 @@ PRODUCT_UNIVERSE: list[tuple[str, str, float, str, list[str]]] = [
 ]
 
 CHAINS: list[dict] = [
-    {"name": "ValueMart", "base_mult": 0.95, "stock_p": 0.95,
-     "default_coverage": 0.90, "cat_mult": {}, "cat_coverage": {}},
-    {"name": "MegaSaver", "base_mult": 0.92, "stock_p": 0.94, "default_coverage": 0.88,
-     "cat_mult": {"grains": 0.78, "baking": 0.78, "beverages": 0.80, "breakfast": 0.80,
-                  "condiments": 0.82, "frozen": 0.82, "dairy": 0.95, "meat": 1.12, "produce": 1.10},
-     "cat_coverage": {"meat": 0.5, "produce": 0.5}},
-    {"name": "FreshFields", "base_mult": 1.16, "stock_p": 0.98, "default_coverage": 0.97,
-     "cat_mult": {"produce": 0.98}, "cat_coverage": {}},
-    {"name": "GreenBasket", "base_mult": 1.10, "stock_p": 0.95, "default_coverage": 0.35,
-     "cat_mult": {"produce": 0.72, "dairy": 0.90, "dairy-alt": 0.85},
-     "cat_coverage": {"produce": 0.95, "dairy": 0.90, "dairy-alt": 0.90}},
-    {"name": "ButcherBlock", "base_mult": 1.00, "stock_p": 0.97, "default_coverage": 0.08,
-     "cat_mult": {"meat": 0.72}, "cat_coverage": {"meat": 0.97}},
-    {"name": "QuickStop", "base_mult": 1.30, "stock_p": 0.90, "default_coverage": 0.55,
-     "cat_mult": {}, "cat_coverage": {}},
+    {
+        "name": "ValueMart",
+        "base_mult": 0.95,
+        "stock_p": 0.95,
+        "default_coverage": 0.90,
+        "cat_mult": {},
+        "cat_coverage": {},
+    },
+    {
+        "name": "MegaSaver",
+        "base_mult": 0.92,
+        "stock_p": 0.94,
+        "default_coverage": 0.88,
+        "cat_mult": {
+            "grains": 0.78,
+            "baking": 0.78,
+            "beverages": 0.80,
+            "breakfast": 0.80,
+            "condiments": 0.82,
+            "frozen": 0.82,
+            "dairy": 0.95,
+            "meat": 1.12,
+            "produce": 1.10,
+        },
+        "cat_coverage": {"meat": 0.5, "produce": 0.5},
+    },
+    {
+        "name": "FreshFields",
+        "base_mult": 1.16,
+        "stock_p": 0.98,
+        "default_coverage": 0.97,
+        "cat_mult": {"produce": 0.98},
+        "cat_coverage": {},
+    },
+    {
+        "name": "GreenBasket",
+        "base_mult": 1.10,
+        "stock_p": 0.95,
+        "default_coverage": 0.35,
+        "cat_mult": {"produce": 0.72, "dairy": 0.90, "dairy-alt": 0.85},
+        "cat_coverage": {"produce": 0.95, "dairy": 0.90, "dairy-alt": 0.90},
+    },
+    {
+        "name": "ButcherBlock",
+        "base_mult": 1.00,
+        "stock_p": 0.97,
+        "default_coverage": 0.08,
+        "cat_mult": {"meat": 0.72},
+        "cat_coverage": {"meat": 0.97},
+    },
+    {
+        "name": "QuickStop",
+        "base_mult": 1.30,
+        "stock_p": 0.90,
+        "default_coverage": 0.55,
+        "cat_mult": {},
+        "cat_coverage": {},
+    },
 ]
 
 
 def _scatter(rng, lat, lon, radius_deg):
-    return (lat + rng.uniform(-radius_deg, radius_deg),
-            lon + rng.uniform(-radius_deg, radius_deg))
+    return (lat + rng.uniform(-radius_deg, radius_deg), lon + rng.uniform(-radius_deg, radius_deg))
 
 
 def generate_raw(seed: int = 42, n_stores: int = 8, n_days: int = 3) -> dict:
@@ -82,16 +137,23 @@ def generate_raw(seed: int = 42, n_stores: int = 8, n_days: int = 3) -> dict:
     # --- product feed (with a couple of re-ingested duplicates) ---
     products = []
     for idx, (name, cat, _b, unit, terms) in enumerate(PRODUCT_UNIVERSE):
-        products.append({
-            "product_id": f"p{idx:03d}", "raw_name": name, "category": cat,
-            "unit": unit, "search_terms": "|".join(terms),
-            "ingested_at": base_ts, "source": "supplier_feed",
-        })
+        products.append(
+            {
+                "product_id": f"p{idx:03d}",
+                "raw_name": name,
+                "category": cat,
+                "unit": unit,
+                "search_terms": "|".join(terms),
+                "ingested_at": base_ts,
+                "source": "supplier_feed",
+            }
+        )
     base_price = {f"p{idx:03d}": b for idx, (_n, _c, b, _u, _t) in enumerate(PRODUCT_UNIVERSE)}
     product_cat = {f"p{idx:03d}": c for idx, (_n, c, _b, _u, _t) in enumerate(PRODUCT_UNIVERSE)}
     # re-ingest two products later, one with stray whitespace -> Silver must dedupe/clean
-    products.append({**products[3], "raw_name": "  Whole Milk 1L ",
-                     "ingested_at": "2024-01-02T06:00:00"})
+    products.append(
+        {**products[3], "raw_name": "  Whole Milk 1L ", "ingested_at": "2024-01-02T06:00:00"}
+    )
     products.append({**products[0], "ingested_at": "2024-01-02T06:00:00"})
 
     # --- store feed (with a couple of duplicate rows) ---
@@ -100,9 +162,17 @@ def generate_raw(seed: int = 42, n_stores: int = 8, n_days: int = 3) -> dict:
         chain = CHAINS[s % len(CHAINS)]
         lat, lon = _scatter(rng, DEFAULT_USER_LAT, DEFAULT_USER_LON, 0.022)
         sid = f"s{s:02d}"
-        stores.append({"store_id": sid, "name": f"{chain['name']} #{s+1}",
-                       "chain": chain["name"], "lat": round(lat, 6), "lon": round(lon, 6),
-                       "ingested_at": base_ts, "source": "store_feed"})
+        stores.append(
+            {
+                "store_id": sid,
+                "name": f"{chain['name']} #{s + 1}",
+                "chain": chain["name"],
+                "lat": round(lat, 6),
+                "lon": round(lon, 6),
+                "ingested_at": base_ts,
+                "source": "store_feed",
+            }
+        )
         # decide which products this store carries (fixed across days)
         for pid in base_price:
             cat = product_cat[pid]
@@ -115,18 +185,24 @@ def generate_raw(seed: int = 42, n_stores: int = 8, n_days: int = 3) -> dict:
     events = []
     eid = 0
     for d in range(n_days):
-        observed = f"2024-01-{d+1:02d}T08:00:00"
+        observed = f"2024-01-{d + 1:02d}T08:00:00"
         for (sid, pid), chain in carries.items():
             cat = product_cat[pid]
             store_noise = rng.uniform(0.95, 1.06)
             day_drift = rng.uniform(0.97, 1.03)
             price = base_price[pid] * chain["base_mult"] * chain["cat_mult"].get(cat, 1.0)
             price = round(price * store_noise * day_drift, 2)
-            events.append({
-                "event_id": f"e{eid:06d}", "store_id": sid, "product_id": pid,
-                "price": price, "in_stock": rng.random() < chain["stock_p"],
-                "observed_at": observed, "source": "price_scrape",
-            })
+            events.append(
+                {
+                    "event_id": f"e{eid:06d}",
+                    "store_id": sid,
+                    "product_id": pid,
+                    "price": price,
+                    "in_stock": rng.random() < chain["stock_p"],
+                    "observed_at": observed,
+                    "source": "price_scrape",
+                }
+            )
             eid += 1
 
     return {"stores": stores, "products": products, "price_events": events}

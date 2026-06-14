@@ -5,6 +5,7 @@ A check records: how many rows failed, out of how many, and a severity. "error"
 means the layer's contract is broken (e.g. duplicate keys in a deduped table);
 "warn" means real-world noise we tolerate but want visibility into.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -26,10 +27,18 @@ def _valid_gtin(code: str) -> bool:
 
 
 def _result(run_id, check, layer, table, severity, failed, total, detail):
-    return {"run_id": run_id, "check_name": check, "layer": layer, "table": table,
-            "severity": severity, "failed_count": int(failed), "total_count": int(total),
-            "passed": bool(failed == 0), "detail": detail,
-            "checked_at": datetime.now(timezone.utc).isoformat()}
+    return {
+        "run_id": run_id,
+        "check_name": check,
+        "layer": layer,
+        "table": table,
+        "severity": severity,
+        "failed_count": int(failed),
+        "total_count": int(total),
+        "passed": bool(failed == 0),
+        "detail": detail,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def run_checks(run_id: str) -> pd.DataFrame:
@@ -40,28 +49,80 @@ def run_checks(run_id: str) -> pd.DataFrame:
 
     # 1) malformed raw records: missing barcode or name (expected: some)
     bad = ((bronze["barcode"].str.len() == 0) | (bronze["product_name"].str.len() == 0)).sum()
-    rows.append(_result(run_id, "malformed_records", "bronze", "raw_products",
-                        "warn", bad, len(bronze), "empty barcode or product_name"))
+    rows.append(
+        _result(
+            run_id,
+            "malformed_records",
+            "bronze",
+            "raw_products",
+            "warn",
+            bad,
+            len(bronze),
+            "empty barcode or product_name",
+        )
+    )
 
     # 2) duplicate products in the deduped dimension (expected: 0)
     dups = int(silver["barcode"].duplicated().sum())
-    rows.append(_result(run_id, "duplicate_products", "silver", "dim_product",
-                        "error", dups, len(silver), "barcode must be unique"))
+    rows.append(
+        _result(
+            run_id,
+            "duplicate_products",
+            "silver",
+            "dim_product",
+            "error",
+            dups,
+            len(silver),
+            "barcode must be unique",
+        )
+    )
 
     # 3) missing categories in the serving catalog (expected: 0)
-    miss = int(silver["category"].isna().sum() + (silver["category"].astype(str).str.len() == 0).sum())
-    rows.append(_result(run_id, "missing_categories", "silver", "dim_product",
-                        "error", miss, len(silver), "category must be set"))
+    miss = int(
+        silver["category"].isna().sum() + (silver["category"].astype(str).str.len() == 0).sum()
+    )
+    rows.append(
+        _result(
+            run_id,
+            "missing_categories",
+            "silver",
+            "dim_product",
+            "error",
+            miss,
+            len(silver),
+            "category must be set",
+        )
+    )
 
     # 4) invalid UPCs / barcodes (real-world noise; warn)
     invalid = int((~silver["barcode"].map(_valid_gtin)).sum())
-    rows.append(_result(run_id, "invalid_upcs", "silver", "dim_product",
-                        "warn", invalid, len(silver), "GTIN check-digit failed"))
+    rows.append(
+        _result(
+            run_id,
+            "invalid_upcs",
+            "silver",
+            "dim_product",
+            "warn",
+            invalid,
+            len(silver),
+            "GTIN check-digit failed",
+        )
+    )
 
     # 5) invalid prices in the serving table (expected: 0)
     badp = int(((offers["price"].isna()) | (offers["price"] <= 0) | (offers["price"] > 1000)).sum())
-    rows.append(_result(run_id, "invalid_prices", "gold", "store_product_offers",
-                        "error", badp, len(offers), "price must be in (0, 1000]"))
+    rows.append(
+        _result(
+            run_id,
+            "invalid_prices",
+            "gold",
+            "store_product_offers",
+            "error",
+            badp,
+            len(offers),
+            "price must be in (0, 1000]",
+        )
+    )
 
     df = pd.DataFrame(rows)
     io.write_delta(df, paths.QUALITY_RESULTS, mode="append")

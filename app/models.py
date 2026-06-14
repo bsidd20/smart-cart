@@ -3,6 +3,7 @@
 Store 1--< InventoryItem >--1 Product, then
 UserCartItem -> MatchResult -> OptimizationResult.
 """
+
 from __future__ import annotations
 
 from typing import Literal, Optional
@@ -16,7 +17,7 @@ class Store(BaseModel):
     chain: str
     lat: float
     lon: float
-    distance_km: Optional[float] = None   # filled in per request
+    distance_km: Optional[float] = None  # filled in per request
 
 
 class Product(BaseModel):
@@ -25,7 +26,7 @@ class Product(BaseModel):
     category: str
     brand: Optional[str] = None
     unit: str = "each"
-    search_terms: list[str] = Field(default_factory=list)   # synonyms used for matching
+    search_terms: list[str] = Field(default_factory=list)  # synonyms used for matching
 
 
 class InventoryItem(BaseModel):

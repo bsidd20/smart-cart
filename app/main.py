@@ -6,6 +6,7 @@
 
 Run: uvicorn app.main:app --reload  (docs at /docs)
 """
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -28,7 +29,7 @@ STATE: dict = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not pipeline.is_built():
-        pipeline.run_fixture()             # offline build from the real-data sample
+        pipeline.run_fixture()  # offline build from the real-data sample
     repo = Repository.load()
     STATE["repo"] = repo
     STATE["matcher"] = ProductMatcher(repo)
@@ -98,16 +99,23 @@ def match_items(req: MatchRequest):
     for q in req.items:
         available = [m for m in matcher.match_across_stores(q).values() if m.available]
         best = min(available, key=lambda m: (-m.score, m.price)) if available else None
-        results.append({
-            "query": q,
-            "matched": best.product_name if best else None,
-            "method": best.method if best else "none",
-            "confidence": best.score if best else 0.0,
-            "available_in_stores": len(available),
-            "price_range": (
-                [round(min(m.price for m in available), 2),
-                 round(max(m.price for m in available), 2)] if available else None),
-        })
+        results.append(
+            {
+                "query": q,
+                "matched": best.product_name if best else None,
+                "method": best.method if best else "none",
+                "confidence": best.score if best else 0.0,
+                "available_in_stores": len(available),
+                "price_range": (
+                    [
+                        round(min(m.price for m in available), 2),
+                        round(max(m.price for m in available), 2),
+                    ]
+                    if available
+                    else None
+                ),
+            }
+        )
     return {"matcher_backend": matcher.backend, "results": results}
 
 
@@ -132,16 +140,24 @@ def optimize_cart(req: OptimizeRequest):
     if req.use_ilp and ortools_solver.is_available():
         options = greedy._collect_options(matcher, cart)
         qty = {ci.raw_text: ci.quantity for ci in cart}
-        oneway = {s: repo.distance_km(s, settings.user_lat, settings.user_lon)
-                  for s in repo.all_store_ids()}
+        oneway = {
+            s: repo.distance_km(s, settings.user_lat, settings.user_lon)
+            for s in repo.all_store_ids()
+        }
         ilp = ortools_solver.optimize_multi_store_ilp(
-            options, qty, oneway, repo, settings.weights, settings.max_stores)
+            options, qty, oneway, repo, settings.weights, settings.max_stores
+        )
         if ilp is not None:
             result["multi_store"] = ilp
 
-    recommended = ("multi_store"
-                   if result["multi_store"].objective < result["single_store"].objective
-                   else "single_store")
+    recommended = (
+        "multi_store"
+        if result["multi_store"].objective < result["single_store"].objective
+        else "single_store"
+    )
     return OptimizeResponse(
-        matcher_backend=matcher.backend, recommended=recommended,
-        single_store=result["single_store"], multi_store=result["multi_store"])
+        matcher_backend=matcher.backend,
+        recommended=recommended,
+        single_store=result["single_store"],
+        multi_store=result["multi_store"],
+    )

@@ -4,6 +4,7 @@ Takes the latest price event per (store_id, barcode) from the event stream and
 upserts it, so a newer price event for an existing pair updates the row (this is
 the realistic incremental case - prices change far more often than products).
 """
+
 from __future__ import annotations
 
 from app.ingestion import io, paths

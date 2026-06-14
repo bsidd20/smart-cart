@@ -4,6 +4,7 @@ Tries semantic similarity first, falls back to fuzzy, and rejects anything below
 min_accept_score. Catalog embeddings are computed once at startup, so each query is
 just a matrix multiply against the cached vectors.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -45,8 +46,7 @@ class ProductMatcher:
         sem_idx = int(np.argmax(sem_scores))
         sem_score = float(sem_scores[sem_idx])
 
-        fz_scores = [fuzzy.best_score(query, c.product.name, c.product.search_terms)
-                     for c in cands]
+        fz_scores = [fuzzy.best_score(query, c.product.name, c.product.search_terms) for c in cands]
         fz_idx = int(np.argmax(fz_scores))
         fz_score = float(fz_scores[fz_idx])
 
@@ -60,16 +60,24 @@ class ProductMatcher:
             idx, score, method = fz_idx, fz_score, "fuzzy"
 
         if score < self.cfg.min_accept_score:
-            return MatchResult(query=query, store_id=store_id, available=False,
-                               score=round(score, 3), method="none")
+            return MatchResult(
+                query=query,
+                store_id=store_id,
+                available=False,
+                score=round(score, 3),
+                method="none",
+            )
 
         chosen = cands[idx]
         return MatchResult(
-            query=query, store_id=store_id,
+            query=query,
+            store_id=store_id,
             product_id=chosen.product.product_id,
             product_name=chosen.product.name,
             price=chosen.price,
-            score=round(score, 3), method=method, available=True,
+            score=round(score, 3),
+            method=method,
+            available=True,
         )
 
     def match_across_stores(self, query: str) -> dict[str, MatchResult]:
