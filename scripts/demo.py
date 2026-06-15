@@ -58,6 +58,7 @@ def show_platform():
         print(f"  {name:<28} v{io.table_version(p)}  {len(io.read_delta(p)):>4} rows")
 
     q = io.read_delta(paths.QUALITY_RESULTS)
+    q = q[q["run_id"] == q.sort_values("checked_at")["run_id"].iloc[-1]]  # latest run only
     print("\n  data quality checks:")
     for r in q.itertuples(index=False):
         flag = "ok" if r.passed else f"{r.failed_count} failed"
@@ -74,8 +75,7 @@ def show_platform():
 
 
 def main():
-    if not pipeline.is_built():
-        pipeline.run_fixture()
+    pipeline.run_fixture()  # deterministic clean rebuild from the committed sample
     repo = Repository.load()
     matcher = ProductMatcher(repo)
 

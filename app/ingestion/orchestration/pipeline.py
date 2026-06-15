@@ -11,6 +11,7 @@ Transform = silver products -> model store/price layer -> silver store/inventory
 from __future__ import annotations
 
 import json
+import shutil
 import time
 
 from app.config import PROJECT_ROOT
@@ -86,6 +87,9 @@ def run_incremental(page_size: int = 40, max_pages: int = 1, seed: int = 42) -> 
 
 
 def run_fixture(seed: int = 42) -> dict:
+    # the fixture is a deterministic from-scratch build, so start clean (otherwise
+    # re-runs append to Bronze and the demo's row/quality counts keep growing)
+    shutil.rmtree(paths.LAKE, ignore_errors=True)
     run = ingest_fixture()
     transform(run["run_id"], seed)
     return run
