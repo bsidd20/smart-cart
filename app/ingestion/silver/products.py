@@ -89,6 +89,14 @@ def build() -> tuple[int, int]:
     ].copy()
     rejected = before - len(clean)
 
+    # keep English, ASCII-named products: raw OFF data contains non-English entries
+    # that the lexical matcher picks up oddly (e.g. "Hahnchengeschnetzeltes" for
+    # chicken breast). See issue #5.
+    clean = clean[
+        (clean["lang"].isna() | clean["lang"].isin(["en", ""]))
+        & clean["product_name"].map(lambda s: s.isascii())
+    ].copy()
+
     clean["product_name"] = clean["product_name"].str.replace(r"\s+", " ", regex=True).str.strip()
     clean["category"] = clean["taxonomy_key"]
     clean["product_group"] = clean["taxonomy_key"].map(lambda k: TAXONOMY[k]["group"])
