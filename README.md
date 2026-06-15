@@ -18,6 +18,19 @@ top of the real product master behind a single swappable module. Full design:
 
 ## Setup
 
+Common tasks are wrapped in a Makefile (`make help` lists them):
+
+```bash
+make demo        # build the lakehouse and run the end-to-end example
+make test        # lint + test suite
+make api         # serve the API at http://127.0.0.1:8000/docs
+make scale       # 2M-row partition-pruning + compaction benchmark
+make dbt         # build dbt models and run dbt tests (needs python3.13)
+make stream      # Kafka + producer + consumer via Docker
+```
+
+Or directly:
+
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
