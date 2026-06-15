@@ -162,6 +162,10 @@ in the issues):
 Roadmap: incremental dbt models, a schema registry for the stream, true backfill from
 an immutable raw landing, and Z-order aligned to the MERGE keys.
 
+For the bugs I hit while building this, the design tradeoffs I made (Kafka vs batch,
+DuckDB vs Spark, dbt vs Spark SQL, Delta vs Iceberg/Hudi), and what I'd add for
+production, see [docs/NOTES.md](docs/NOTES.md).
+
 ## Layout
 
 ```
@@ -180,5 +184,5 @@ Dockerfile           app image for the containerized producer/consumer
 docker-compose.yml   one-command stack: Kafka (KRaft) + UI + producer + consumer + Spark
 scripts/             ingest.py, demo.py, benchmark.py, scale_simulation.py
 tests/               app + platform + streaming tests, real-data fixture
-docs/                ARCHITECTURE, INGESTION, PERFORMANCE, STREAMING, SCALE
+docs/                ARCHITECTURE, INGESTION, PERFORMANCE, STREAMING, SCALE, NOTES
 ```
