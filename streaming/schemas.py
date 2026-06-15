@@ -2,8 +2,8 @@
 
 Every event carries a `schema_version`. The consumer accepts any known version,
 validates against that version's contract, and upgrades older events to the latest
-shape so downstream code only deals with one schema. This is how you evolve an event
-contract without a coordinated big-bang producer/consumer deploy.
+shape so downstream code only deals with one schema. The event contract can then
+evolve without a coordinated big-bang producer/consumer deploy.
 
   v1: schema_version, event_id, store_id, product_id, price, observed_at
   v2: adds in_stock and currency

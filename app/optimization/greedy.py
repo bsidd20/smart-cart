@@ -140,7 +140,7 @@ def optimize_multi_store(options, qty, oneway_km, repo, w, max_stores) -> Optimi
 
     def reassign_without(store_to_drop, cur_chosen, cur_missing):
         # Prefer reassigning to a store already in the plan, since that adds no new
-        # trip; that's what makes consolidation actually reduce the store count.
+        # trip, so consolidation can actually drop the store count.
         used_after = {s for s in cur_chosen.values() if s != store_to_drop}
         new_chosen, new_missing = {}, list(cur_missing)
         for item, sid in cur_chosen.items():
