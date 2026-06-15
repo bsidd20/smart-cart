@@ -15,4 +15,6 @@ transform/logs/
 infra/**/.terraform/
 *.tfstate
 *.tfstate.*
+# personal study notes, not part of the project
+docs/INTERVIEW_GUIDE.md
 .DS_Store

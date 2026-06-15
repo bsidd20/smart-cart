@@ -58,30 +58,9 @@ side output instead of losing them.
 
 ## Architecture tradeoffs
 
-**Kafka vs batch-only.** The product data from OFF changes slowly, so batch plus a
-`last_modified_t` watermark is the right tool there. Prices change fast, which is why
-the price feed is the streaming candidate. I kept both instead of forcing everything
-into one model: batch for the slow product master, streaming for the fast price events.
-It's Lambda-ish, but because both land in the same Bronze Delta there's no second
-serving copy to reconcile.
-
-**DuckDB alongside Spark.** On a laptop, DuckDB plus delta-rs beats Spark easily: no
-JVM, no shuffle. Spark only earns its keep once the data outgrows one machine. I didn't
-want to fake a cluster on a 2M-row laptop dataset, so DuckDB is the default and Spark is
-the documented distributed path. The transforms are SQL, so they move between the two.
-
-**dbt instead of hand-written Spark SQL.** dbt gives me tests, lineage, and a
-declarative model graph without building any of it myself, and it runs on DuckDB locally
-and `dbt-spark` at scale with the same models. Writing the equivalent in raw Spark SQL
-would mean re-inventing the testing and lineage. So dbt owns the T; Python stays the EL,
-where the retry and API logic belongs.
-
-**Delta vs Iceberg vs Hudi.** All three give ACID and time travel on object storage. I
-went with Delta because delta-rs runs the whole thing locally without a JVM (Iceberg's
-Python write story is thinner), the format maps one-to-one onto Databricks, and
-MERGE/OPTIMIZE/Z-order are first-class. I'd reach for Iceberg if I needed real
-engine-neutrality or hidden partitioning, and Hudi if record-level upserts with strong
-incremental pull were the central requirement.
+The why behind the major choices (Delta vs Iceberg, DuckDB vs Spark, dbt vs Spark SQL,
+batch vs streaming, and the rest) lives in [DECISIONS.md](DECISIONS.md) so it stays in
+one place.
 
 ## What I'd do next in production
 

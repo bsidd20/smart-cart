@@ -1,170 +1,160 @@
 # smart-cart
 
 Turn a grocery list into a shopping plan. Given items like
-`["chicken breast", "rice", "eggs", "milk", "spinach"]`, smart-cart returns the best
-single store to buy everything, the cheapest practical multi-store split, and a short
-reason for each item.
+`["chicken breast", "rice", "eggs", "milk", "spinach"]`, it returns the best single
+store to buy everything, the cheapest practical multi-store split, and a short reason
+for each item.
 
-The centerpiece is a data platform; the optimizer is one consumer of it. Product data
-is pulled from [Open Food Facts](https://world.openfoodfacts.org) into Bronze Delta
-tables, transformed by **dbt** (staging -> intermediate -> marts) with tests and
-lineage, validated, and served as Gold marts. It runs locally and free using real
-Delta Lake (via `delta-rs`), DuckDB, and dbt, and is designed to lift onto AWS
-(Terraform) with Airflow orchestration and GitHub Actions CI.
+The shopping app is the small part. The bulk of this repo is the data platform behind
+it: real product data pulled from [Open Food Facts](https://world.openfoodfacts.org)
+into a Delta Lake medallion (Bronze/Silver/Gold), transformed by dbt, validated, and
+served as Gold marts, with both batch and streaming ingestion. It runs locally and free
+on delta-rs, DuckDB, and dbt, and is laid out to lift onto AWS (Terraform) with Airflow
+and CI.
 
-Open Food Facts has product data but no prices, so the store/price layer is modeled on
-top of the real product master behind a single swappable module. Full design:
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/INGESTION.md](docs/INGESTION.md).
+## Why this exists
+
+I wanted to build a modern lakehouse end to end rather than the usual single slice. Most
+examples stop at "read a CSV into a table"; the parts that are actually hard, like
+incremental loading, schema evolution, quality gates, partitioning, and streaming, get
+skipped. So I built all of it on free tools and made the grocery optimizer the consumer,
+because a real consumer forces the data to be correct and useful in a way a dashboard
+does not. Using real Open Food Facts data (messy, multilingual, full of gaps) kept it
+honest. It was built as a focused sprint, then hardened as I found problems.
+
+There is no free real-time grocery price API, so pricing is modeled on top of the real
+product master and isolated to one module. That seam is labeled on purpose; I would
+rather have honest data with a clear swap point than a fabricated price source.
 
 ## Setup
 
-Common tasks are wrapped in a Makefile (`make help` lists them):
+Common tasks are in the Makefile (`make help`):
 
 ```bash
-make demo        # build the lakehouse and run the end-to-end example
+make demo        # build the lakehouse from the sample and run the example
 make test        # lint + test suite
-make api         # serve the API at http://127.0.0.1:8000/docs
+make api         # API at http://127.0.0.1:8000/docs
 make scale       # 2M-row partition-pruning + compaction benchmark
-make dbt         # build dbt models and run dbt tests (needs python3.13)
+make dbt         # build dbt models and run dbt tests (creates a python3.13 venv)
 make stream      # Kafka + producer + consumer via Docker
 ```
 
-Or directly:
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-python scripts/ingest.py            # offline build from the committed real-data sample
-python scripts/demo.py              # run an example end to end
-```
-
-To pull fresh data from Open Food Facts (rate-limited, takes a few minutes):
-
-```bash
-python scripts/ingest.py --live         # full pull
-python scripts/ingest.py --incremental  # only products changed since the last run
-```
-
-API:
-
-```bash
-uvicorn app.main:app --reload       # docs at http://127.0.0.1:8000/docs
-```
-
-Tests: `pytest`
+Or directly: `pip install -r requirements.txt`, then `python scripts/ingest.py` and
+`python scripts/demo.py`. `python scripts/ingest.py --live` pulls fresh data from Open
+Food Facts (rate-limited).
 
 ## Architecture
 
 ```
- Open Food Facts -> BRONZE (raw) -> SILVER (clean/dedupe) -> GOLD (serving) -> API
-                    + modeled store/price layer
-                    + meta (runs, watermarks, metrics) + quality (checks)
+ Open Food Facts -> BRONZE (raw, append-only) -> SILVER (clean, MERGE) -> GOLD (serving) -> API
+ Kafka price events ->                       (Spark Structured Streaming)
+                      + meta (runs, watermarks, metrics) + quality (checks, quarantine)
 ```
 
-- **Bronze** lands raw records append-only with ingestion metadata (run id, timestamp,
-  source, schema version). No cleaning here, so it can be replayed.
-- **Silver** keeps one row per key with DuckDB window functions, normalizes units,
-  maps categories, and MERGE-upserts so re-runs only touch changed rows.
-- **Gold** has `store_product_offers` (served to the app), `product_catalog`,
-  `category_price_stats`, `cheapest_products`, and `product_search_index`.
-- **Incremental**: a per-category `last_modified_t` watermark means each pull only
-  fetches changed products; Silver MERGEs them in.
-- **Quality + observability**: every run records check results, row counts, and data
-  freshness to dedicated tables, exposed at `/ingestion/quality` and `/ingestion/runs`.
+Python does extract and load; dbt does transform. Bronze is the append-only replay log;
+Silver is the current state maintained with Delta MERGE; Gold is denormalized for
+serving. The full picture is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and the
+reasoning behind each choice (Delta vs Iceberg, DuckDB vs Spark, dbt vs Spark SQL, and
+so on) is in [docs/DECISIONS.md](docs/DECISIONS.md).
 
-## Data platform
-
-- **dbt** (`transform/`) is the transform layer: sources over the Bronze Delta tables,
-  `staging` -> `intermediate` -> `marts`, with data tests and generated lineage. Run it
-  in a Python 3.13 env:
-  ```bash
-  python3.13 -m venv .venv-dbt && source .venv-dbt/bin/activate && pip install -r requirements-dbt.txt
-  export SMARTCART_LAKE=$(pwd)/data/lake SMARTCART_MARTS=$(pwd)/data/lake/marts
-  cd transform && dbt build --profiles-dir .   # builds marts + runs tests
-  dbt docs generate --profiles-dir . && dbt docs serve --profiles-dir .   # lineage
-  ```
+The platform pieces:
+- **dbt** (`transform/`): staging -> intermediate -> marts, with data tests and lineage.
+- **Streaming** (`streaming/`, `spark/`): Kafka price events -> Spark Structured
+  Streaming -> Bronze, with a dead-letter queue, replay, schema versioning, and
+  watermarks. The whole stack runs with `docker compose up --build`; the logic is also
+  unit-tested without a broker. See [docs/STREAMING.md](docs/STREAMING.md).
+- **Quality + observability**: per-run check results, quarantine for bad records, schema
+  drift detection, row counts, and freshness, exposed at `/ingestion/quality` and
+  `/ingestion/runs`.
+- **Partitioning + performance**: partitioned by category/date; compaction and Z-order.
+  `scripts/scale_simulation.py` benchmarks it at 2M rows. See
+  [docs/PERFORMANCE.md](docs/PERFORMANCE.md) and [docs/SCALE.md](docs/SCALE.md).
 - **Orchestration** (`orchestration/airflow/`): a daily DAG with retries/backoff,
-  backfills (`catchup`), failure alerts, and quality gates.
-- **Schema evolution**: source drift is detected per run (`app/ingestion/metadata/schema.py`)
-  - new columns are allowed, removals are flagged.
-- **Quarantine**: malformed records are routed to a quarantine table, not dropped.
-- **Partitioning + performance**: Delta tables are partitioned by category/date for
-  partition pruning; `scripts/benchmark.py` shows pruning (~91% files skipped) and
-  small-file compaction / Z-order with before/after numbers. See
-  [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
-- **Streaming** (`streaming/`, `spark/`): Kafka price-event stream -> Spark Structured
-  Streaming -> Bronze Delta, with a dead-letter queue, offset tracking, event schema
-  versioning, watermarks/late handling, and replay. The whole stack (Kafka, producer,
-  consumer, Spark) runs with **`docker compose up --build`** - host needs only Docker;
-  the producer/consumer logic is also unit-tested without a broker. See
-  [docs/STREAMING.md](docs/STREAMING.md).
-- **Scale**: `scripts/scale_simulation.py` builds millions of rows and benchmarks
-  partition pruning + compaction at a size where it matters (2M rows: one-day query
-  3.6x faster, compaction 1200->30 files). PySpark + Delta jobs in `spark/` are the
-  distributed path. See [docs/SCALE.md](docs/SCALE.md).
-- **Cloud / IaC** (`infra/`): Terraform for an S3 lakehouse with dev/stage/prod isolation.
-- **CI** (`.github/workflows/ci.yml`): ruff lint + format, pytest, and a full dbt
-  build+test on every push.
+  backfills, an optimize step, and quality gates.
+- **Cloud / CI** (`infra/`, CI): Terraform for an S3 lakehouse (dev/stage/prod), and a
+  GitHub Actions pipeline that lints, tests, and runs dbt build+test.
 
 ## Endpoints
 
 - `GET /stores` - stores near the user with distances
 - `POST /match-items` - `{"items": ["milk", "spinach"]}` -> best product per item
-- `POST /optimize-cart` - `{"items": [...], "max_stores": 3, "use_ilp": false}` ->
-  single-store plan, multi-store plan, and per-item reasons
-- `GET /price-stats` - per-category price spread (Gold)
-- `GET /cheapest` - cheapest store per product (Gold)
+- `POST /optimize-cart` - `{"items": [...], "max_stores": 3}` -> single-store plan,
+  multi-store plan, and per-item reasons
+- `GET /price-stats`, `GET /cheapest` - analytics from Gold
 - `GET /ingestion/runs`, `GET /ingestion/quality` - run history and quality results
 
 ## Matching and optimization
 
-**Matching** (`app/matching/`). Each list item is matched to a product at each store.
-Fuzzy matching (RapidFuzz) handles typos, plurals and word order; an optional embedding
-matcher handles meaning. A score threshold keeps bad substitutions out, so "spinach"
-doesn't match "spaghetti", and a category exclusion rule keeps "milk" off plant milks.
+Each list item is matched to a product at each store: fuzzy matching (RapidFuzz) for
+typos and word order, with an optional embedding matcher for meaning. A score threshold
+keeps bad substitutions out (so "spinach" does not match "spaghetti"), and the cheap
+hashing-embedding fallback is not trusted to accept a match on its own.
 
-**Optimization** (`app/optimization/`). The single-store answer scores each store's
-basket and picks the best. The multi-store answer assigns each item to a store to
-minimize one objective:
+The optimizer minimizes one objective:
 
 ```
 price*basket + distance*round_trip_km + subs*sum(1 - match_score)
   + visit*num_stores + coverage*num_missing
 ```
 
-The greedy solver starts from each item's cheapest store, consolidates down to
-`max_stores`, and drops any store that isn't worth the extra trip. Weights live in
-`app/config.py`. `ortools_solver.py` solves the same objective exactly as an ILP if
-OR-Tools is installed.
+The greedy solver starts from each item's cheapest store, consolidates to `max_stores`,
+and drops any store not worth the trip. The weights in `app/config.py` are the knobs:
+raise the distance/visit weights and plans collapse to one store; lower them and they
+fan out to cheaper stores. `ortools_solver.py` solves the same objective exactly when
+OR-Tools is available.
+
+## When things break
+
+How the system behaves under the failures that matter, and where it is honestly weak:
+
+- **Upstream API flaky** (Open Food Facts returns 406/503 under load): retry with
+  backoff, round-robin across mirrors, and per-category isolation, so one bad category
+  logs a warning and the run finishes with partial results.
+- **Duplicate stream events**: at-least-once delivery means duplicates, so the consumer
+  sink is an idempotent Delta MERGE on `event_id`. Redelivery upserts, not duplicates.
+- **Malformed records**: routed to a quarantine table with a reason, not dropped, so the
+  run keeps moving and bad data stays inspectable.
+- **Partial batch run**: per-category isolation keeps the run alive, but there is no
+  atomic run boundary yet, so a downstream reader can see a partially-loaded day. Known
+  gap; the fix is a stage-then-swap or a `run_id` gate.
+- **Corrupt file**: Delta's transaction log protects metadata, and Bronze is replayable,
+  so recovery is time-travel to a prior version or re-deriving Silver/Gold from Bronze.
+  There is no automated corruption check; that is a gap.
+- **Late events**: `withWatermark` bounds the state Spark holds; events later than the
+  watermark are dropped. That is the memory-vs-completeness tradeoff, and I would add a
+  side output for stragglers if completeness mattered more.
+
+## Scaling
+
+The levers are partition pruning and compaction, both measured in the 2M-row simulation:
+a one-day query opens ~1/30 of the files (about 3.6x faster), and compaction collapsed
+1,200 small files to 30 and sped full scans ~3x. Those ratios hold at any size.
+
+The path past one machine is Spark: the dbt models are SQL, so they run on `dbt-spark`
+unchanged, and `spark/` has the equivalent PySpark + Delta jobs. The honest limits: the
+MERGE keys are not the partition keys, so MERGE cannot prune partitions at very large
+scale; the dbt marts are full-refresh; and I have not run this past a few million rows.
+See [docs/SCALE.md](docs/SCALE.md).
 
 ## Known limitations
 
-Things I know are weak and would harden before calling this production-grade (tracked
-in the issues):
+The weak spots I would harden before calling this production-grade (tracked in the
+issues):
 
-- **Incremental pull fetches one page per category.** If a category has more than a
-  page of changed products between runs, some are missed. Needs cursor pagination.
-- **Schema-drift detection is shallow.** It compares the extracted column set, so it
-  catches changes to our own schema but not arbitrary changes in the raw upstream
-  payload. A schema registry would make this real.
-- **MERGE keys are not the partition keys** (`barcode`, `event_id` vs `category`/
-  `event_date`), so MERGE can't prune partitions at large scale.
-- **dbt marts are full-refresh, not incremental** - fine here, would not scale.
-- **Matching is lexical** (RapidFuzz + a hashing-embedding fallback), so messy or
-  non-English Open Food Facts data produces odd matches. Real sentence embeddings and
-  a language filter would help.
-- **Pricing is modeled** on the real product master, because no free real-time grocery
-  price feed exists. It is isolated to one module for a clean swap.
-- **OR-Tools** has no Python 3.13/3.14 wheel yet, so the exact ILP solver is optional
-  and the greedy solver is the default.
+- Incremental pull fetches one page per category, so a category with more than a page of
+  changes between runs would miss some. Needs cursor pagination.
+- Schema-drift detection compares the extracted column set, not the raw upstream payload,
+  so it catches our-side changes but not arbitrary upstream ones. A schema registry fixes
+  this.
+- MERGE keys are not aligned with partition keys (see Scaling).
+- dbt marts are full-refresh, not incremental.
+- Matching is lexical, so messy or non-English data still produces the occasional odd
+  pick. Real sentence embeddings would help.
+- Pricing is modeled (no free price feed exists), isolated for a clean swap.
+- OR-Tools has no wheel for current Python, so the exact solver is optional.
 
-Roadmap: incremental dbt models, a schema registry for the stream, true backfill from
-an immutable raw landing, and Z-order aligned to the MERGE keys.
-
-For the bugs I hit while building this, the design tradeoffs I made (Kafka vs batch,
-DuckDB vs Spark, dbt vs Spark SQL, Delta vs Iceberg/Hudi), and what I'd add for
-production, see [docs/NOTES.md](docs/NOTES.md).
+The bugs I actually hit and what I changed are in [docs/NOTES.md](docs/NOTES.md).
+Contributing and onboarding notes are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Layout
 
@@ -178,11 +168,10 @@ app/
 transform/           dbt project (staging -> intermediate -> marts, tests, lineage)
 streaming/           Kafka producer/consumer, DLQ, replay, schema versioning
 spark/               PySpark + Delta: Structured Streaming + batch jobs
-orchestration/airflow/  production DAG (retries, backfills, alerts, optimize, quality gates)
+orchestration/airflow/  daily DAG (retries, backfills, optimize, quality gates)
 infra/               Terraform: S3 lakehouse, dev/stage/prod
-Dockerfile           app image for the containerized producer/consumer
 docker-compose.yml   one-command stack: Kafka (KRaft) + UI + producer + consumer + Spark
-scripts/             ingest.py, demo.py, benchmark.py, scale_simulation.py
+scripts/             ingest, demo, benchmark, scale_simulation
 tests/               app + platform + streaming tests, real-data fixture
-docs/                ARCHITECTURE, INGESTION, PERFORMANCE, STREAMING, SCALE, NOTES
+docs/                ARCHITECTURE, DECISIONS, INGESTION, PERFORMANCE, STREAMING, SCALE, NOTES
 ```
