@@ -138,6 +138,30 @@ The greedy solver starts from each item's cheapest store, consolidates down to
 `app/config.py`. `ortools_solver.py` solves the same objective exactly as an ILP if
 OR-Tools is installed.
 
+## Known limitations
+
+Things I know are weak and would harden before calling this production-grade (tracked
+in the issues):
+
+- **Incremental pull fetches one page per category.** If a category has more than a
+  page of changed products between runs, some are missed. Needs cursor pagination.
+- **Schema-drift detection is shallow.** It compares the extracted column set, so it
+  catches changes to our own schema but not arbitrary changes in the raw upstream
+  payload. A schema registry would make this real.
+- **MERGE keys are not the partition keys** (`barcode`, `event_id` vs `category`/
+  `event_date`), so MERGE can't prune partitions at large scale.
+- **dbt marts are full-refresh, not incremental** - fine here, would not scale.
+- **Matching is lexical** (RapidFuzz + a hashing-embedding fallback), so messy or
+  non-English Open Food Facts data produces odd matches. Real sentence embeddings and
+  a language filter would help.
+- **Pricing is modeled** on the real product master, because no free real-time grocery
+  price feed exists. It is isolated to one module for a clean swap.
+- **OR-Tools** has no Python 3.13/3.14 wheel yet, so the exact ILP solver is optional
+  and the greedy solver is the default.
+
+Roadmap: incremental dbt models, a schema registry for the stream, true backfill from
+an immutable raw landing, and Z-order aligned to the MERGE keys.
+
 ## Layout
 
 ```
